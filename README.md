@@ -8,27 +8,35 @@
   A fast, native macOS app for reading Markdown files.
 </p>
 
-<p align="center"><img alt="Platform" src="https://img.shields.io/badge/platform-macOS%2015%2B-blue" />&nbsp;<img alt="Swift" src="https://img.shields.io/badge/swift-6.0-orange" />&nbsp;<img alt="License" src="https://img.shields.io/badge/license-MIT-green" />&nbsp;<img alt="Latest release" src="https://img.shields.io/github/v/release/pluk-inc/markdown-preview" />&nbsp;<img alt="Homebrew cask" src="https://img.shields.io/homebrew/cask/v/markdown-preview" /></p>
-
-<p align="center">
-  <a href="https://buymeacoffee.com/pluk">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="42" alt="Buy Me a Coffee" />
-  </a>
-</p>
+<p align="center"><img alt="Platform" src="https://img.shields.io/badge/platform-macOS%2015%2B-blue" />&nbsp;<img alt="Swift" src="https://img.shields.io/badge/swift-6.0-orange" />&nbsp;<img alt="License" src="https://img.shields.io/badge/license-MIT-green" /></p>
 
 ---
+
+> **Personal fork.** This is my own build of [`pluk-inc/markdown-preview`](https://github.com/pluk-inc/markdown-preview), maintained for personal use with local changes (for example, showing several folders in one Project Navigator window). It is built and run locally rather than distributed. For the official signed, notarized, auto-updating app, use upstream. Build/run/update steps live in [`AGENTS.md`](AGENTS.md).
 
 > Drop a `.md` on the icon (or set Markdown Preview as your default handler) and get a clean, scrollable preview with a real document outline — no Electron, no browser tab.
 
 ## Installation
 
-Markdown Preview is available in the official [Homebrew cask repository](https://formulae.brew.sh/cask/markdown-preview):
+This fork is not distributed — build it locally (full Xcode required):
+
+```sh
+git clone https://github.com/tong-wu-umn/markdown-preview.git
+cd markdown-preview
+xcodebuild -project md-preview.xcodeproj -scheme md-preview \
+  -configuration Debug CODE_SIGNING_ALLOWED=NO build
+```
+
+Then copy the built `Markdown Preview.app` out of DerivedData into
+`/Applications` (it installs as **Markdown Preview (dev)**, bundle id
+`doc.md-preview.dev`, so it never clashes with the upstream app). The full
+build/run/update workflow is in [`AGENTS.md`](AGENTS.md).
+
+For the official signed, notarized, auto-updating app, install upstream:
 
 ```sh
 brew install --cask markdown-preview
 ```
-
-Or grab the latest signed and notarized DMG from the [Releases](https://github.com/pluk-inc/markdown-preview/releases) page.
 
 ## Screenshots
 
@@ -93,12 +101,14 @@ UTI: `net.daringfireball.markdown`
 ## Building from source
 
 ```sh
-git clone git@github.com:pluk-inc/markdown-preview.git
+git clone https://github.com/tong-wu-umn/markdown-preview.git
 cd markdown-preview
-open markdown-preview.xcodeproj
+open md-preview.xcodeproj
 ```
 
-Build and run the `markdown-preview` scheme. Swift Package Manager will resolve [Sparkle](https://github.com/sparkle-project/Sparkle), [Sentry](https://github.com/getsentry/sentry-cocoa), and [swift-markdown](https://github.com/swiftlang/swift-markdown) on first build.
+Build and run the `md-preview` scheme (requires full Xcode, not just the Command Line Tools). Swift Package Manager will resolve [Sparkle](https://github.com/sparkle-project/Sparkle), [Sentry](https://github.com/getsentry/sentry-cocoa), and [swift-markdown](https://github.com/swiftlang/swift-markdown) on first build.
+
+> Local Debug builds — this fork's default — send **nothing**: the crash reporter and usage analytics below are both release-build only, and the release channel belongs to upstream. The two subsections describe upstream release builds and are kept for reference.
 
 ### Crash reporting
 
@@ -122,49 +132,14 @@ Version.xcconfig    Marketing & build version (single source of truth)
 appcast.xml         Sparkle update feed
 ```
 
-## Releasing
+## Releasing (upstream only)
 
-Releases are driven by [Amore](http://amore.computer/) — it handles building, code signing, notarization, DMG creation, S3 upload, and Sparkle appcast publishing in one shot.
-
-To prepare a release PR, start from latest `main`, update both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `Version.xcconfig`, and add the matching `CHANGELOG.md` entry with contributor credits. Submit these together in a ready PR; see the [release-process skill](.agents/skills/release-process/SKILL.md) for naming and validation.
-
-When ready to publish the prepared release, run the following from a clean working tree. This builds, notarizes, uploads, tags, and publishes the release:
-
-```sh
-./scripts/release.sh
-```
-
-Use `./scripts/rollback-release.sh` to revert the appcast pointer if a release misbehaves.
-
-### Contributing
-
-
-Pull requests are welcome. For larger changes, please open an issue first to discuss what you'd like to change.
-
-1. Fork the repo and create your branch from `main`.
-2. Run the app and verify the change end-to-end (UI changes need a manual smoke test — there's no UI test suite yet).
-3. Keep PRs focused; one logical change per PR.
-4. Match the existing Swift style (no formatter is enforced; mirror nearby code).
-
-<h2 align="center" style="color: #8a8a8a;">Special Sponsor</h2>
-
-<br />
-
-<p align="center">
-  <a href="https://pluk.sh">
-    <img src="docs/sponsors/pluk-logo.png" height="54" alt="Pluk" />
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://amore.computer">
-    <img src="docs/sponsors/amore-logo.png" height="54" alt="Amore" />
-  </a>
-</p>
-
-## Support
-
-Markdown Preview is free and MIT-licensed. If it saved you a browser tab, you can [buy us a coffee](https://buymeacoffee.com/pluk).
+The upstream project is released with [Amore](http://amore.computer/) — building, code signing, notarization, DMG creation, S3 upload, and Sparkle appcast publishing in one shot via `./scripts/release.sh` (rollback with `./scripts/rollback-release.sh`). This fork does not hold the upstream signing material (Apple Team ID, EdDSA key, notary/Amore profile), so it cannot publish notarized builds or Sparkle updates. The scripts and the [release-process skill](.agents/skills/release-process/SKILL.md) are kept for reference and for merging upstream changes.
 
 ## Acknowledgments
+
+This is a personal fork of [`pluk-inc/markdown-preview`](https://github.com/pluk-inc/markdown-preview) by [Pluk](https://pluk.sh) — all credit for the app itself goes to the upstream authors.
+
 - [Amore](http://amore.computer/) — MacOS release automation (signing, notarization, DMG, hosting, appcast)
 - [swift-markdown](https://github.com/swiftlang/swift-markdown) — Markdown parser (Apple, cmark-gfm-backed)
 - [Mermaid](https://mermaid.js.org/) — Bundled diagram renderer for `mermaid` fenced code blocks
