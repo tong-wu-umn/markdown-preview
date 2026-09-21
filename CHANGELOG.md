@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Reopen last folders at launch.** When Markdown Preview starts on its own, it re-mounts the Project Navigator folders you had open at last quit instead of asking you to choose a file, so you pick up where you left off. Turn it off in *Settings → General → Windows → Reopen last folders at launch* to start with the open panel instead.
 - **Show several folders in one Project Navigator window.** Mount additional root folders with *File → Add Folder to Navigator…*, by dropping folders onto the navigator, or by passing several folders to `mdp` (`mdp docs guides`) or the open panel — each keeps its own expanded tree and file watching. Right-click a top-level folder to *Remove from Navigator*. Opening a file outside every mounted folder no longer discards a navigator you assembled by hand.
 
 ### Fixed

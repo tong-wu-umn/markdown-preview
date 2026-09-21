@@ -123,8 +123,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installViewMenuItemIcons()
         hasFinishedLaunching = true
         if !didReceiveOpenURLsDuringLaunch {
+            if restoreLastSessionFolders() { return }
             scheduleDocumentPrompt(requiresNoDocuments: true)
         }
+    }
+
+    /// Re-mounts the folders open at last quit so the reader picks up where
+    /// they left off, in place of the Open panel. Folders only (not the open
+    /// file), gated behind the preference. Returns `true` when it mounted at
+    /// least one folder, so the caller skips the Open panel.
+    @discardableResult
+    private func restoreLastSessionFolders() -> Bool {
+        guard SessionRestoreSetting.isEnabled else { return false }
+        let folders = SessionRestoreSetting.restorableFolders()
+        guard !folders.isEmpty else { return false }
+        openFolders(folders)
+        return true
+    }
+
+    /// The folders to remember for next launch: the active window's mounted
+    /// roots, falling back to the first other window that still has folders so
+    /// a folderless front window doesn't erase a project open behind it.
+    private func sessionFoldersToPersist() -> [URL] {
+        if let active = activeDocumentWindowController,
+           let folders = active.mainSplit?.mountedFolderURLs, !folders.isEmpty {
+            return folders
+        }
+        for document in NSDocumentController.shared.documents {
+            for case let controller as DocumentWindowController in document.windowControllers {
+                if let folders = controller.mainSplit?.mountedFolderURLs, !folders.isEmpty {
+                    return folders
+                }
+            }
+        }
+        return []
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        SessionRestoreSetting.saveFolders(sessionFoldersToPersist())
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

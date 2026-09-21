@@ -97,6 +97,14 @@ final class SettingsModel {
         }
     }
 
+    var restoresLastFoldersAtLaunch: Bool {
+        didSet {
+            guard !isRestoringExternalValues,
+                  restoresLastFoldersAtLaunch != oldValue else { return }
+            SessionRestoreSetting.isEnabled = restoresLastFoldersAtLaunch
+        }
+    }
+
     var sendsCrashReports: Bool {
         didSet {
             guard !isRestoringExternalValues, sendsCrashReports != oldValue else { return }
@@ -258,6 +266,7 @@ final class SettingsModel {
         isAlwaysOnTop = AlwaysOnTopPolicy.isEnabled
         opensDocumentsInTabs = TabOpeningPolicy.isEnabled
         opensMarkdownLinksInNewWindows = UserDefaults.standard.bool(forKey: "MarkdownPreview.opensMarkdownLinksInNewWindows")
+        restoresLastFoldersAtLaunch = SessionRestoreSetting.isEnabled
         sendsCrashReports = CrashReporter.isEnabled
         themeColors = ThemeColorsSetting.current
         sharesAnonymousUsageAnalytics = UsageAnalyticsReporter.isEnabled
@@ -313,6 +322,7 @@ final class SettingsModel {
         isAlwaysOnTop = AlwaysOnTopPolicy.isEnabled
         opensDocumentsInTabs = TabOpeningPolicy.isEnabled
         opensMarkdownLinksInNewWindows = UserDefaults.standard.bool(forKey: "MarkdownPreview.opensMarkdownLinksInNewWindows")
+        restoresLastFoldersAtLaunch = SessionRestoreSetting.isEnabled
         sendsCrashReports = CrashReporter.isEnabled
         themeColors = ThemeColorsSetting.current
         sharesAnonymousUsageAnalytics = UsageAnalyticsReporter.isEnabled

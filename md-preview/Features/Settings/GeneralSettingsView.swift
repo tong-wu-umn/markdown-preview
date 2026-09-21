@@ -49,6 +49,11 @@ struct GeneralSettingsView: View {
                     Text(L("Open documents in tabs"))
                     Text(L("A file opened from Finder joins the front window as a tab instead of getting one of its own — Open in New Window still opens a window."))
                 }
+
+                Toggle(isOn: $model.restoresLastFoldersAtLaunch) {
+                    Text(L("Reopen last folders at launch"))
+                    Text(L("When the app starts on its own, it re-mounts the Project Navigator folders you had open at last quit instead of asking you to choose a file. Turn this off to start with the Open panel."))
+                }
             } header: {
                 Text(L("Windows"))
             }
