@@ -241,6 +241,10 @@
 "Open in New Tab" = "在新标签页中打开";
 "Open in New Window" = "在新窗口中打开";
 "Copy Path" = "拷贝路径";
+"Add Folder to Navigator…" = "将文件夹添加到项目导航器…";
+"Remove from Navigator" = "从项目导航器中移除";
+"Choose folders to add to the Project Navigator" = "选择要添加到项目导航器的文件夹";
+"No folder in the navigator" = "项目导航器中没有文件夹";
 
 /* Table editing */
 "Table" = "表格";

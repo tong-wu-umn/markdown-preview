@@ -114,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installEditModeMenuItem()
         installFormatMenu()
         installNewTabMenuItem()
+        installAddFolderMenuItem()
         installFileExportMenuItems()
         installGoMenu()
         installSettingsMenuItem()
@@ -154,17 +155,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         cancelScheduledDocumentPrompt()
 
         var malformedSchemeURLs: [URL] = []
+        var resolved: [URL] = []
         for incoming in urls {
             guard let url = ExternalOpenScheme.resolvedURL(opening: incoming) else {
                 malformedSchemeURLs.append(incoming)
                 continue
             }
+            resolved.append(url)
+        }
 
+        openResolvedURLs(resolved)
+
+        if !malformedSchemeURLs.isEmpty {
+            presentUnsupportedSchemeURLAlert(malformedSchemeURLs)
+            scheduleDocumentPromptIfIdle()
+        }
+    }
+
+    /// Opens a batch of already-resolved file/folder URLs: every folder in
+    /// the batch mounts into one window (rather than replacing the root once
+    /// per folder and keeping only the last, as with `mdp a b`), then each
+    /// file opens. Shared by the URL/CLI batch handler and the app-level
+    /// Open panel so a multi-folder selection there mounts every folder too.
+    func openResolvedURLs(_ urls: [URL]) {
+        var directories: [URL] = []
+        var files: [URL] = []
+        for url in urls {
             if url.isExistingDirectory {
-                openFolder(url)
-                continue
+                directories.append(url)
+            } else {
+                files.append(url)
             }
+        }
 
+        if !directories.isEmpty {
+            openFolders(directories)
+        }
+
+        for url in files {
             pendingOpenURLCount += 1
             NSDocumentController.shared.openDocument(withContentsOf: url,
                                                      display: true) { [weak self] document, _, error in
@@ -178,11 +206,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.scheduleDocumentPromptIfIdle()
                 }
             }
-        }
-
-        if !malformedSchemeURLs.isEmpty {
-            presentUnsupportedSchemeURLAlert(malformedSchemeURLs)
-            scheduleDocumentPromptIfIdle()
         }
     }
 
@@ -526,8 +549,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func openFolder(_ url: URL) {
+        openFolders([url])
+    }
+
+    /// Mounts one or more folders as navigator roots (always `.replace` from
+    /// this entry point). Reuses the active window if there is one, otherwise
+    /// makes a folder window.
+    func openFolders(_ urls: [URL]) {
+        let directories = urls.map(\.standardizedFileURL)
+        guard !directories.isEmpty else { return }
+
         if let controller = activeDocumentWindowController {
-            controller.openFolder(url)
+            controller.openFolders(directories, mode: .replace)
             return
         }
 
@@ -538,7 +571,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let controller = document.windowControllers.first as? DocumentWindowController else {
             return
         }
-        controller.openFolder(url)
+        controller.openFolders(directories, mode: .replace)
     }
 
     private var isOpenPanelVisible: Bool {
@@ -778,6 +811,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                               keyEquivalent: "t")
         let insertIndex = fileMenu.items
             .firstIndex { $0.action == #selector(openDocument(_:)) } ?? 0
+        fileMenu.insertItem(item, at: insertIndex)
+    }
+
+    /// File > Add Folder to Navigator, placed after Open. Uses the same
+    /// nil-target/responder-chain routing as New Tab, so it disables itself
+    /// when no document window is open. No key equivalent is assigned.
+    private func installAddFolderMenuItem() {
+        guard let fileMenu = topLevelSubmenu(matching: Self.fileMenuTitles),
+              fileMenu.items.first(where: {
+                  $0.action == #selector(DocumentWindowController.addFolderToNavigator(_:))
+              }) == nil else { return }
+
+        let item = NSMenuItem(title: L("Add Folder to Navigator\u{2026}"),
+                              action: #selector(DocumentWindowController.addFolderToNavigator(_:)),
+                              keyEquivalent: "")
+        let insertIndex = fileMenu.items
+            .firstIndex { $0.action == #selector(openDocument(_:)) }
+            .map { $0 + 1 } ?? fileMenu.items.count
         fileMenu.insertItem(item, at: insertIndex)
     }
 
@@ -1258,24 +1309,9 @@ extension AppDelegate {
                   let url = controller.currentFileURL else { return nil }
             return (item, url)
         }
+        let labels = PathDisambiguation.labels(for: entries.map(\.1))
         for (item, url) in entries {
-            let duplicates = entries.filter { $0.1.lastPathComponent == url.lastPathComponent }
-            guard duplicates.count > 1 else {
-                item.title = url.lastPathComponent
-                continue
-            }
-            let parents = url.deletingLastPathComponent().pathComponents.filter { $0 != "/" }
-            var count = 1
-            while count < parents.count {
-                let suffix = parents.suffix(count).joined(separator: "/")
-                let ambiguous = duplicates.contains { other in
-                    other.1 != url && other.1.deletingLastPathComponent().pathComponents
-                        .suffix(count).joined(separator: "/") == suffix
-                }
-                if !ambiguous { break }
-                count += 1
-            }
-            item.title = "\(url.lastPathComponent) (\(parents.suffix(count).joined(separator: "/")))"
+            item.title = labels[url] ?? url.lastPathComponent
         }
     }
 }

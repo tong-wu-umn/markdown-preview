@@ -15,6 +15,9 @@ final class SidebarViewController: NSViewController {
     var onSelectHeading: ((Int) -> Void)?
     var onSelectFile: ((URL) -> Void)?
     var onModeChanged: ((Mode) -> Void)?
+    /// Bubbled from the navigator's "Add Folder to Navigator" menu entries
+    /// up to the window controller, which owns the folder picker.
+    var onAddFolderRequested: (() -> Void)?
 
     private var contentContainer: NSView!
     private var scrollView: NSScrollView!
@@ -24,8 +27,12 @@ final class SidebarViewController: NSViewController {
     private var titleItem: TitleItem?
     private var lastRenderedMarkdown: String?
     private var lastRenderedFileName: String?
-    private var loadedFolderURL: URL?
-    private var pendingFolderURL: URL?
+    /// The window's mounted navigator roots, explicit and implicit (D1: one
+    /// set per window/tab).
+    private var rootSet = NavigatorRootSet()
+    /// The roots the navigator view has actually been handed; kept in step
+    /// with `rootSet` so a lazy TOC-mode open doesn't walk the disk.
+    private var loadedRootURLs: [URL] = []
     private var pendingFileURL: URL?
 
     private static let modeDefaultsKey = "Sidebar.Mode"
@@ -79,6 +86,21 @@ final class SidebarViewController: NSViewController {
         projectNavigator.onSelectFile = { [weak self] url in
             self?.onSelectFile?(url)
         }
+        projectNavigator.onAddFolderRequested = { [weak self] in
+            self?.onAddFolderRequested?()
+        }
+        projectNavigator.onRemoveRoot = { [weak self] url in
+            self?.removeFolder(url)
+        }
+        projectNavigator.onAddFolders = { [weak self] urls in
+            // Adding folders must not change which document is open, so keep
+            // the current file as the selection candidate.
+            self?.openFolders(urls, selectedFileURL: self?.pendingFileURL, mode: .add)
+        }
+        projectNavigator.isExplicitRoot = { [weak self] url in
+            let target = url.standardizedFileURL
+            return self?.rootSet.roots.first { $0.url == target }?.isExplicit ?? false
+        }
         contentContainer.addSubview(projectNavigator)
 
         NSLayoutConstraint.activate([
@@ -116,12 +138,16 @@ final class SidebarViewController: NSViewController {
     }
 
     private func refreshNavigatorIfNeeded() {
-        if pendingFolderURL != loadedFolderURL {
-            loadedFolderURL = pendingFolderURL
-            projectNavigator.setRoot(pendingFolderURL)
+        if rootSet.urls != loadedRootURLs {
+            loadedRootURLs = rootSet.urls
+            projectNavigator.setRoots(rootSet.urls)
         }
         projectNavigator.setCurrentFile(pendingFileURL)
     }
+
+    /// Every folder currently mounted as a root — exposed so a document
+    /// search index (PR #408) can index all of them, not just the first.
+    var mountedFolderURLs: [URL] { rootSet.urls }
 
     private func applyMode() {
         switch currentMode {
@@ -157,13 +183,21 @@ final class SidebarViewController: NSViewController {
         setOpenFileURL(newURL)
     }
 
-    /// Mounts an explicitly chosen folder as the Project Navigator root.
-    /// If the current document is inside that folder, keep it selected.
+    /// Mounts an explicitly chosen folder as the Project Navigator root,
+    /// replacing whatever was there. Kept for callers that open a single
+    /// folder; delegates to `openFolders`.
     func openFolder(_ folderURL: URL, selectedFileURL: URL?) {
+        openFolders([folderURL], selectedFileURL: selectedFileURL, mode: .replace)
+    }
+
+    /// Mounts one or more folders as navigator roots. `.replace` swaps the
+    /// whole set (⌘O, Finder, `mdp`, URL scheme); `.add` appends (Add Folder
+    /// to Navigator…). If the current document is inside one of the
+    /// resulting roots, keep it selected.
+    func openFolders(_ folderURLs: [URL], selectedFileURL: URL?, mode: FolderMountMode) {
         loadViewIfNeeded()
-        let root = folderURL.standardizedFileURL
-        pendingFolderURL = root
-        if let selectedFileURL, selectedFileURL.isDescendantOrSame(of: root) {
+        rootSet.mount(folderURLs, mode: mode)
+        if let selectedFileURL, rootSet.containingRoot(for: selectedFileURL) != nil {
             pendingFileURL = selectedFileURL.standardizedFileURL
         } else {
             pendingFileURL = nil
@@ -173,17 +207,26 @@ final class SidebarViewController: NSViewController {
         }
     }
 
+    /// Removes a root (D7). Leaves the open document untouched; only drops
+    /// the navigator selection if the file is no longer under any root.
+    func removeFolder(_ folderURL: URL) {
+        loadViewIfNeeded()
+        guard rootSet.remove(folderURL) else { return }
+        if let file = pendingFileURL, rootSet.containingRoot(for: file) == nil {
+            pendingFileURL = nil
+        }
+        if currentMode == .files {
+            refreshNavigatorIfNeeded()
+        }
+    }
+
     /// Defers folder enumeration until the user is actually in the
     /// navigator (saves disk walks on every TOC-mode open). Keeps the
-    /// existing root if the new file is a descendant; otherwise resets
-    /// so an unrelated File → Open updates the tree.
+    /// existing root when the new file is a descendant; otherwise follows
+    /// the file's parent so an unrelated File → Open updates the tree. A set
+    /// with explicit roots is left alone (D3).
     private func setOpenFileURL(_ fileURL: URL?) {
-        let parent = fileURL?.deletingLastPathComponent().standardizedFileURL
-        if let parent, let current = loadedFolderURL, parent.isDescendantOrSame(of: current) {
-            pendingFolderURL = current
-        } else {
-            pendingFolderURL = parent
-        }
+        rootSet.accommodate(openFileURL: fileURL)
         pendingFileURL = fileURL?.standardizedFileURL
         if currentMode == .files {
             refreshNavigatorIfNeeded()

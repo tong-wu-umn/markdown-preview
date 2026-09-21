@@ -38,6 +38,7 @@ final class MainSplitViewController: NSSplitViewController {
     var onOpenMarkdownLink: ((URL) -> Void)?
     var onToggleTaskCheckbox: ((Int, Bool) -> Void)?
     var onEditTable: ((MarkdownTableEditRequest) -> Void)?
+    var onAddFolderRequested: (() -> Void)?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -50,6 +51,9 @@ final class MainSplitViewController: NSSplitViewController {
         }
         sidebarVC.onSelectFile = { [weak self] url in
             self?.onSelectFile?(url)
+        }
+        sidebarVC.onAddFolderRequested = { [weak self] in
+            self?.onAddFolderRequested?()
         }
         let sidebar = Self.makeSidebarItem(for: sidebarVC, themed: false)
 
@@ -106,10 +110,22 @@ final class MainSplitViewController: NSSplitViewController {
     }
 
     func openFolder(_ folderURL: URL, selectedFileURL: URL?) {
-        sidebarViewController?.openFolder(folderURL, selectedFileURL: selectedFileURL)
+        openFolders([folderURL], selectedFileURL: selectedFileURL, mode: .replace)
+    }
+
+    func openFolders(_ folderURLs: [URL], selectedFileURL: URL?, mode: FolderMountMode) {
+        sidebarViewController?.openFolders(folderURLs, selectedFileURL: selectedFileURL, mode: mode)
         setSidebarMode(.files)
         showSidebar()
     }
+
+    func removeFolder(_ folderURL: URL) {
+        sidebarViewController?.removeFolder(folderURL)
+    }
+
+    /// The folders currently mounted as navigator roots (for PR #408's
+    /// document search index).
+    var mountedFolderURLs: [URL] { sidebarViewController?.mountedFolderURLs ?? [] }
 
     func clearContent() {
         contentViewController?.clearContent()

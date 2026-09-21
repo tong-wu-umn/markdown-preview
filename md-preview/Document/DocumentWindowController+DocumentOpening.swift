@@ -57,16 +57,44 @@ extension DocumentWindowController {
     }
 
     func openFolder(_ folderURL: URL) {
-        let folderURL = folderURL.standardizedFileURL
-        if currentFileURL == nil {
-            documentWindow.title = folderURL.lastPathComponent
+        openFolders([folderURL], mode: .replace)
+    }
+
+    /// Mounts several folders as navigator roots. `.replace` swaps the whole
+    /// set (the backward-compatible single-folder entry points and a
+    /// multi-folder `application(_:open:)` batch); `.add` appends (Add Folder
+    /// to Navigator).
+    func openFolders(_ folderURLs: [URL], mode: FolderMountMode = .replace) {
+        let standardized = folderURLs.map(\.standardizedFileURL)
+        guard !standardized.isEmpty else { return }
+        mainSplit?.openFolders(standardized, selectedFileURL: currentFileURL, mode: mode)
+        // D8: a folder-only window titles from its first root; an open file
+        // overrides the title through the normal document path.
+        if currentFileURL == nil, let first = mainSplit?.mountedFolderURLs.first {
+            documentWindow.title = first.lastPathComponent
             updateWindowSubtitle()
         }
-        (documentWindow.contentViewController as? MainSplitViewController)?
-            .openFolder(folderURL, selectedFileURL: currentFileURL)
         documentWindow.makeKeyAndOrderFront(nil)
         NSApp.activate()
         syncSidebarToolbarState()
+    }
+
+    /// File > Add Folder to Navigator and the navigator's own "Add Folder"
+    /// menu entries. Multi-select so several folders can be mounted
+    /// at once; each is appended (`.add`) to the current roots.
+    @objc func addFolderToNavigator(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.message = NSLocalizedString(
+            "Choose folders to add to the Project Navigator",
+            comment: "Add folder open panel prompt"
+        )
+        panel.beginSheetModal(for: documentWindow) { [weak self] response in
+            guard let self, response == .OK, !panel.urls.isEmpty else { return }
+            self.openFolders(panel.urls, mode: .add)
+        }
     }
 
     func contextMenuEditorItems(for fileURL: URL) -> [NSMenuItem] {
@@ -135,24 +163,31 @@ extension DocumentWindowController {
     private func promptForDocument(openAsTab: Bool) {
         let panel = makeOpenPanel()
         panel.beginSheetModal(for: documentWindow) { [weak self] response in
-            guard let self, response == .OK, let url = panel.url else { return }
-            if url.isExistingDirectory {
-                self.openFolder(url)
-                return
+            guard let self, response == .OK, !panel.urls.isEmpty else { return }
+            var directories: [URL] = []
+            var files: [URL] = []
+            for url in panel.urls {
+                if url.isExistingDirectory { directories.append(url) } else { files.append(url) }
             }
-            if openAsTab {
-                self.openInNewTab(url)
-            } else {
-                // Plain open: tab placement follows the system
-                // "Prefer tabs" setting via attachToExistingTabGroupIfNeeded.
-                self.openDocumentWindow(for: url)
+            // Selected folders mount together, replacing the current roots.
+            if !directories.isEmpty {
+                self.openFolders(directories, mode: .replace)
+            }
+            for url in files {
+                if openAsTab {
+                    self.openInNewTab(url)
+                } else {
+                    // Plain open: tab placement follows the system
+                    // "Prefer tabs" setting via attachToExistingTabGroupIfNeeded.
+                    self.openDocumentWindow(for: url)
+                }
             }
         }
     }
 
     private func makeOpenPanel() -> NSOpenPanel {
         let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.message = NSLocalizedString(

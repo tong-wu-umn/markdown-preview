@@ -209,6 +209,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         split.onEditTable = { [weak self] request in
             self?.applyTableEdit(request)
         }
+        split.onAddFolderRequested = { [weak self] in
+            self?.addFolderToNavigator(nil)
+        }
         documentWindow.contentViewController = split
         documentWindow.setContentSize(NSSize(width: 1100, height: 720))
         documentWindow.center()

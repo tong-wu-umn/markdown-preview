@@ -52,10 +52,22 @@ private final class FileNode {
 final class ProjectNavigatorView: NSView {
 
     var onSelectFile: ((URL) -> Void)?
+    /// Fired by the "Add Folder to Navigator…" menu entries so the window
+    /// controller can present the folder picker.
+    var onAddFolderRequested: (() -> Void)?
+    /// Fired by "Remove from Navigator" on an explicit root row.
+    var onRemoveRoot: ((URL) -> Void)?
+    /// Fired when folders are dropped onto the navigator (mounted additively).
+    var onAddFolders: (([URL]) -> Void)?
+    /// Asks the owner whether a root row was mounted by the user (only
+    /// explicit roots offer "Remove from Navigator").
+    var isExplicitRoot: ((URL) -> Bool)?
 
     private let scrollView = NSScrollView()
     private let outlineView = NSOutlineView()
-    private var rootNode: FileNode?
+    private var rootNodes: [FileNode] = []
+    /// Disambiguated labels for root rows (shared with the Window menu).
+    private var rootLabels: [URL: String] = [:]
     /// The file whose document is actually open. Keep this separate from the
     /// outline's transient click selection so a pending Save/Don't Save/Cancel
     /// decision cannot make the navigator disagree with the editor.
@@ -63,6 +75,8 @@ final class ProjectNavigatorView: NSView {
     // One watcher per loaded directory; kept in sync with which FileNodes
     // currently have a populated children cache.
     private var watchers: [URL: DirectoryWatcher] = [:]
+    /// Shown in `.files` mode when no folder is mounted (D7 / Phase 2).
+    private let emptyStateView = NSView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -105,6 +119,11 @@ final class ProjectNavigatorView: NSView {
 
         scrollView.documentView = outlineView
 
+        // Accept directory drops onto the navigator to mount them (Phase 2).
+        outlineView.registerForDraggedTypes([.fileURL])
+
+        setUpEmptyState()
+
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -113,21 +132,131 @@ final class ProjectNavigatorView: NSView {
         ])
     }
 
-    func setRoot(_ url: URL?) {
-        cancelAllWatchers()
-        rootNode = url.map { FileNode(url: $0.standardizedFileURL, isDirectory: true) }
-        outlineView.reloadData()
-        if let rootNode {
-            outlineView.expandItem(rootNode)
+    /// Centered placeholder shown when `.files` mode has no folder mounted.
+    private func setUpEmptyState() {
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateView.isHidden = true
+
+        let label = NSTextField(labelWithString:
+            NSLocalizedString("No folder in the navigator", comment: "Empty project navigator"))
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        label.font = .systemFont(ofSize: 12)
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 2
+
+        let button = NSButton(
+            title: NSLocalizedString("Add Folder to Navigator\u{2026}", comment: "Empty project navigator"),
+            target: self,
+            action: #selector(addFolderButtonClicked))
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+
+        let stack = NSStackView(views: [label, button])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateView.addSubview(stack)
+        addSubview(emptyStateView, positioned: .above, relativeTo: scrollView)
+
+        NSLayoutConstraint.activate([
+            emptyStateView.topAnchor.constraint(equalTo: topAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            emptyStateView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            emptyStateView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: emptyStateView.centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: emptyStateView.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: emptyStateView.trailingAnchor, constant: -16)
+        ])
+        updateEmptyState()
+    }
+
+    private func updateEmptyState() {
+        emptyStateView.isHidden = !rootNodes.isEmpty
+    }
+
+    @objc private func addFolderButtonClicked() {
+        onAddFolderRequested?()
+    }
+
+    /// Mounts `urls` as the navigator's roots. Existing `FileNode`s are
+    /// reused for URLs that were already mounted, so their child caches and
+    /// expansion survive; only added/removed roots are animated in and out,
+    /// which keeps the other trees from collapsing.
+    func setRoots(_ urls: [URL]) {
+        let standardized = urls.map(\.standardizedFileURL)
+        var existing: [URL: FileNode] = [:]
+        for node in rootNodes { existing[node.url] = node }
+        let oldURLs = rootNodes.map(\.url)
+        let newNodes = standardized.map { existing[$0] ?? FileNode(url: $0, isDirectory: true) }
+        rootNodes = newNodes
+        rootLabels = PathDisambiguation.labels(for: standardized)
+        updateEmptyState()
+
+        if oldURLs == standardized {
+            // Same roots, possibly restyled labels — nothing structural.
+            reloadRootLabels()
             syncWatchers()
+            return
         }
+
+        // Incremental only while the surviving roots keep their order
+        // (add-at-end / remove); otherwise a full reload preserving expansion.
+        let survivingOld = oldURLs.filter { standardized.contains($0) }
+        let survivingNew = standardized.filter { oldURLs.contains($0) }
+        guard survivingOld == survivingNew else {
+            let expanded = collectExpandedURLs()
+            outlineView.reloadData()
+            for node in newNodes {
+                outlineView.expandItem(node)
+                reExpand(node, expanded: expanded)
+            }
+            syncWatchers()
+            return
+        }
+
+        outlineView.beginUpdates()
+        for index in oldURLs.indices.reversed() where !standardized.contains(oldURLs[index]) {
+            outlineView.removeItems(at: IndexSet(integer: index),
+                                    inParent: nil,
+                                    withAnimation: .effectFade)
+        }
+        for index in standardized.indices where !oldURLs.contains(standardized[index]) {
+            outlineView.insertItems(at: IndexSet(integer: index),
+                                    inParent: nil,
+                                    withAnimation: .slideDown)
+        }
+        outlineView.endUpdates()
+        for node in newNodes where !oldURLs.contains(node.url) {
+            outlineView.expandItem(node)
+        }
+        syncWatchers()
+    }
+
+    /// Refreshes the visible text of root rows without touching the tree —
+    /// used when only the disambiguated labels changed.
+    private func reloadRootLabels() {
+        for node in rootNodes {
+            let row = outlineView.row(forItem: node)
+            guard row >= 0,
+                  let cell = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false)
+                    as? NSTableCellView else { continue }
+            cell.textField?.stringValue = rootLabels[node.url] ?? node.displayName
+            cell.toolTip = node.url.path
+        }
+    }
+
+    private func isRootNode(_ node: FileNode) -> Bool {
+        rootNodes.contains { $0 === node }
     }
 
     // MARK: - Folder watching
 
     private func syncWatchers() {
         var live: Set<URL> = []
-        if let rootNode { collectLoadedDirectories(rootNode, into: &live) }
+        for node in rootNodes { collectLoadedDirectories(node, into: &live) }
         for url in live where watchers[url] == nil {
             watchers[url] = DirectoryWatcher(url: url) { [weak self] in
                 self?.handleFolderChange()
@@ -148,11 +277,6 @@ final class ProjectNavigatorView: NSView {
         }
     }
 
-    private func cancelAllWatchers() {
-        for watcher in watchers.values { watcher.cancel() }
-        watchers.removeAll()
-    }
-
     private func handleFolderChange() {
         let selectedURL = currentlySelectedURL()
         refreshTree()
@@ -163,11 +287,11 @@ final class ProjectNavigatorView: NSView {
     /// Selection is left to the caller.
     private func refreshTree() {
         let expandedURLs = collectExpandedURLs()
-        if let rootNode { invalidateCaches(rootNode) }
+        for node in rootNodes { invalidateCaches(node) }
         outlineView.reloadData()
-        if let rootNode {
-            outlineView.expandItem(rootNode)
-            reExpand(rootNode, expanded: expandedURLs)
+        for node in rootNodes {
+            outlineView.expandItem(node)
+            reExpand(node, expanded: expandedURLs)
         }
         syncWatchers()
     }
@@ -215,34 +339,40 @@ final class ProjectNavigatorView: NSView {
 
     func setCurrentFile(_ url: URL?) {
         currentFileURL = url?.standardizedFileURL
-        guard let url, let rootNode else {
+        guard let target = currentFileURL, !rootNodes.isEmpty else {
             outlineView.deselectAll(nil)
             return
         }
-        let target = url.standardizedFileURL
-        var path: [FileNode] = []
-        if !collectPath(to: target, from: rootNode, into: &path) {
-            // Cache might be stale (file was just renamed and our
-            // DirectoryWatcher hasn't fired yet). Refresh from disk once
-            // and retry before giving up.
-            refreshTree()
-            path = []
-            guard collectPath(to: target, from: rootNode, into: &path) else {
-                outlineView.deselectAll(nil)
-                return
+        if selectPath(to: target) { return }
+        // Cache might be stale (file was just renamed and our
+        // DirectoryWatcher hasn't fired yet). Refresh from disk once
+        // and retry before giving up.
+        refreshTree()
+        if selectPath(to: target) { return }
+        outlineView.deselectAll(nil)
+    }
+
+    /// Selects `target` under the first root that contains it (D4). Returns
+    /// false when no mounted root holds the file.
+    private func selectPath(to target: URL) -> Bool {
+        for root in rootNodes where target.isDescendantOrSame(of: root.url) {
+            var path: [FileNode] = []
+            guard collectPath(to: target, from: root, into: &path) else { continue }
+            outlineView.expandItem(root)
+            for ancestor in path.dropLast() {
+                outlineView.expandItem(ancestor)
+            }
+            if let leaf = path.last {
+                let row = outlineView.row(forItem: leaf)
+                if row >= 0 {
+                    outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                    outlineView.scrollRowToVisible(row)
+                    refreshRowTextColors()
+                    return true
+                }
             }
         }
-        for ancestor in path.dropLast() {
-            outlineView.expandItem(ancestor)
-        }
-        if let leaf = path.last {
-            let row = outlineView.row(forItem: leaf)
-            if row >= 0 {
-                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                outlineView.scrollRowToVisible(row)
-                refreshRowTextColors()
-            }
-        }
+        return false
     }
 
     private func collectPath(to targetURL: URL,
@@ -321,6 +451,15 @@ final class ProjectNavigatorView: NSView {
             }
         }
     }
+
+    @objc private func addFolderToNavigator(_ sender: NSMenuItem) {
+        onAddFolderRequested?()
+    }
+
+    @objc private func removeRootFromNavigator(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        onRemoveRoot?(url)
+    }
 }
 
 extension ProjectNavigatorView: NSMenuDelegate {
@@ -328,13 +467,34 @@ extension ProjectNavigatorView: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let row = outlineView.clickedRow
-        guard row >= 0, let node = outlineView.item(atRow: row) as? FileNode else { return }
+        guard row >= 0, let node = outlineView.item(atRow: row) as? FileNode else {
+            // Empty area: the one action that makes sense with no row is
+            // mounting another folder.
+            menu.addItem(makeAddFolderItem())
+            return
+        }
         let url = node.url
 
         menu.addItem(makeMenuItem(title: NSLocalizedString("Show in Finder", comment: "Project navigator context menu"),
                                   symbol: "folder",
                                   action: #selector(showInFinder(_:)),
                                   url: url))
+
+        if isRootNode(node) {
+            if isExplicitRoot?(url) ?? false {
+                menu.addItem(makeMenuItem(title: NSLocalizedString("Remove from Navigator", comment: "Project navigator context menu"),
+                                          symbol: "minus.circle",
+                                          action: #selector(removeRootFromNavigator(_:)),
+                                          url: url))
+            }
+            menu.addItem(.separator())
+            menu.addItem(makeAddFolderItem())
+            menu.addItem(makeMenuItem(title: NSLocalizedString("Copy Path", comment: "Project navigator context menu"),
+                                      symbol: "document.on.document",
+                                      action: #selector(copyPath(_:)),
+                                      url: url))
+            return
+        }
 
         if !node.isDirectory {
             menu.addItem(.separator())
@@ -377,6 +537,15 @@ extension ProjectNavigatorView: NSMenuDelegate {
         return item
     }
 
+    private func makeAddFolderItem() -> NSMenuItem {
+        let item = NSMenuItem(title: NSLocalizedString("Add Folder to Navigator\u{2026}", comment: "Project navigator context menu"),
+                              action: #selector(addFolderToNavigator(_:)),
+                              keyEquivalent: "")
+        item.target = self
+        item.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: nil)
+        return item
+    }
+
     private var documentWindowController: DocumentWindowController? {
         outlineView.window?.windowController as? DocumentWindowController
     }
@@ -405,17 +574,47 @@ extension ProjectNavigatorView: NSOutlineViewDataSource {
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         if let node = item as? FileNode { return node.children().count }
-        return rootNode == nil ? 0 : 1
+        return rootNodes.count
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         if let node = item as? FileNode { return node.children()[index] }
-        return rootNode!
+        return rootNodes[index]
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         guard let node = item as? FileNode else { return false }
         return node.isDirectory && !node.children().isEmpty
+    }
+
+    // MARK: - Directory drops
+
+    func outlineView(_ outlineView: NSOutlineView,
+                     validateDrop info: NSDraggingInfo,
+                     proposedItem item: Any?,
+                     proposedChildIndex index: Int) -> NSDragOperation {
+        guard !droppedFolderURLs(from: info).isEmpty else { return [] }
+        // Retarget any folder drop to the navigator as a whole, so dropping
+        // onto a row still mounts the folder as a new root.
+        outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        return .copy
+    }
+
+    func outlineView(_ outlineView: NSOutlineView,
+                     acceptDrop info: NSDraggingInfo,
+                     item: Any?,
+                     childIndex index: Int) -> Bool {
+        let urls = droppedFolderURLs(from: info)
+        guard !urls.isEmpty else { return false }
+        onAddFolders?(urls)
+        return true
+    }
+
+    private func droppedFolderURLs(from info: NSDraggingInfo) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        guard let objects = info.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self], options: options) as? [URL] else { return [] }
+        return objects.filter { $0.isExistingDirectory }
     }
 }
 
@@ -458,7 +657,13 @@ extension ProjectNavigatorView: NSOutlineViewDelegate {
             ])
         }
 
-        cell.textField?.stringValue = node.displayName
+        if isRootNode(node) {
+            cell.textField?.stringValue = rootLabels[node.url] ?? node.displayName
+            cell.toolTip = node.url.path
+        } else {
+            cell.textField?.stringValue = node.displayName
+            cell.toolTip = nil
+        }
         let icon = NSWorkspace.shared.icon(forFile: node.url.path)
         icon.size = NSSize(width: 16, height: 16)
         cell.imageView?.image = icon

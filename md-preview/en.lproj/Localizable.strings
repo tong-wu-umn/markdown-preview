@@ -241,6 +241,10 @@
 "Open in New Tab" = "Open in New Tab";
 "Open in New Window" = "Open in New Window";
 "Copy Path" = "Copy Path";
+"Add Folder to Navigator…" = "Add Folder to Navigator…";
+"Remove from Navigator" = "Remove from Navigator";
+"Choose folders to add to the Project Navigator" = "Choose folders to add to the Project Navigator";
+"No folder in the navigator" = "No folder in the navigator";
 
 /* Table editing */
 "Table" = "Table";

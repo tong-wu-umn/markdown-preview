@@ -13,7 +13,7 @@ final class MarkdownDocumentController: NSDocumentController {
         _ openPanel: NSOpenPanel,
         forTypes inTypes: [String]?
     ) async -> Int {
-        openPanel.allowsMultipleSelection = false
+        openPanel.allowsMultipleSelection = true
         openPanel.canChooseDirectories = true
         openPanel.canChooseFiles = true
         openPanel.message = NSLocalizedString(
@@ -23,6 +23,23 @@ final class MarkdownDocumentController: NSDocumentController {
         openPanel.allowedContentTypes = Self.markdownFileExtensions
             .compactMap { UTType(filenameExtension: $0) }
         return await super.beginOpenPanel(openPanel, forTypes: inTypes)
+    }
+
+    /// The app-level Open command (Command-O with no document window key).
+    /// `NSDocumentController`'s default opens each selected URL through
+    /// `openDocument(withContentsOf:)` independently, so two selected folders
+    /// would each replace the root and the second would win. Run the panel
+    /// and dispatch the whole selection through one batch instead, so every
+    /// folder mounts and files still open per the tab policy.
+    @IBAction override func openDocument(_ sender: Any?) {
+        Task { @MainActor in
+            let panel = NSOpenPanel()
+            let response = await beginOpenPanel(panel, forTypes: nil)
+            guard response == NSApplication.ModalResponse.OK.rawValue,
+                  !panel.urls.isEmpty,
+                  let appDelegate = NSApp.delegate as? AppDelegate else { return }
+            appDelegate.openResolvedURLs(panel.urls)
+        }
     }
 
     override func openDocument(

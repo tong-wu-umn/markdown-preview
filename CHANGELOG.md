@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Show several folders in one Project Navigator window.** Mount additional root folders with *File → Add Folder to Navigator…*, by dropping folders onto the navigator, or by passing several folders to `mdp` (`mdp docs guides`) or the open panel — each keeps its own expanded tree and file watching. Right-click a top-level folder to *Remove from Navigator*. Opening a file outside every mounted folder no longer discards a navigator you assembled by hand.
+
+### Fixed
+
+- **Opening several folders at once shows them all.** `mdp a b`, `md-preview://` links, and multi-folder open-panel selections previously kept only the last folder; they now mount every folder into one window.
+
 ## [0.0.59] – 2026-09-21
 
 This release fixes search in edit mode and improves how Markdown layout carries between reading and editing.
