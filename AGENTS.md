@@ -20,8 +20,8 @@ Version is managed centrally in `Version.xcconfig` (`MARKETING_VERSION`, `CURREN
 ## Codex development workflow
 
 - `.codex/config.toml` pins `gpt-6-astra` with `medium` reasoning for trusted project sessions. Explicit session overrides can take precedence. This config controls the coding agent; the app's Open in LLM action delegates to external apps.
-- Open PRs ready for review, never as drafts. Never use a `codex/` branch prefix.
-- The maintainer uses Nushell and has `gh` authentication available. Match shell syntax to the actual execution shell.
+- This is a **personal fork** of `pluk-inc/markdown-preview`. Work is committed directly to the local branch — there are no upstream pull requests, so PR/branch-naming conventions do not apply. Branches exist only to organize local work or to merge upstream changes.
+- The owner uses Nushell and has `gh` authentication available. Match shell syntax to the actual execution shell.
 - Complete work authorized by the user's request, making reasonable routine implementation choices. A request for a plan authorizes planning only.
 - Apply skills within their stated scope. If an instruction blocks authorized work, identify the exact file and instruction rather than inferring an extra approval requirement.
 - Keep verification proportional: config and documentation changes need validation and diff review; Swift changes need relevant tests and an app build; visible behavior changes need runtime verification.
@@ -76,15 +76,16 @@ grep -rn "<the behaviour you changed>" README.md samples/ tests/fixtures/ docs/
   filesystem exception) are narrowly scoped, notarization-review-sensitive
   capabilities. Don't broaden or "clean up" them without understanding why
   they're there (see the inline comments in each file).
-- A release PR must update **both** `MARKETING_VERSION` and
+- When bumping the version, update **both** `MARKETING_VERSION` and
   `CURRENT_PROJECT_VERSION` in `Version.xcconfig`, together with the matching
-  `CHANGELOG.md` entry. Edit the version file directly during PR preparation.
-  `scripts/release.sh` builds and publishes; run it only when release execution
-  is requested, not merely to create the PR.
+  `CHANGELOG.md` entry. `scripts/release.sh` builds and publishes through the
+  upstream Amore/Sparkle channel and needs the maintainer's signing material
+  (Team ID, EdDSA key, notary/Amore profile) — this fork generally cannot run
+  it; build a local copy instead (see "Running & updating a local build").
 
-## Releasing
+## Releasing (upstream only)
 
-See the `release-process` skill for branch/PR naming, exactly what `scripts/release.sh` and `scripts/rollback-release.sh` do, and the Amore config already wired for this project.
+The `release-process` skill documents branch naming, exactly what `scripts/release.sh` and `scripts/rollback-release.sh` do, and the Amore config wired for the upstream project. This fork lacks the upstream signing material (Team ID `5P3TSMNV42`, EdDSA key, notary keychain / Amore profile), so it can publish neither notarized builds nor Sparkle updates. Kept here for reference and for merging upstream changes; day-to-day use is the local build below.
 
 ## Release references
 
@@ -98,3 +99,80 @@ xcodebuild -resolvePackageDependencies -project md-preview.xcodeproj
 ```
 Sparkle helper tools (sign_update / generate_keys / generate_appcast) live at:
 `~/Library/Developer/Xcode/DerivedData/md-preview-*/SourcePackages/artifacts/sparkle/Sparkle/bin/`
+
+## Running & updating a local build
+
+This fork runs as an **unsigned Debug app** built locally. It receives no
+Sparkle auto-updates (those need the upstream appcast + EdDSA key), so
+"updating the app" means rebuilding and re-copying — there is no in-app update.
+
+### One-time toolchain setup
+
+A full **Xcode** install is required (not just Command Line Tools): `xcodebuild`
+and the app-target build need it, and a mismatched Command Line Tools toolchain
+fails to compile even `import Foundation`. Point the toolchain at Xcode once:
+
+```bash
+sudo xcodebuild -license accept
+sudo xcodebuild -runFirstLaunch
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+xcodebuild -version   # verify
+```
+
+### Build
+
+```bash
+xcodebuild -project md-preview.xcodeproj -scheme md-preview \
+  -configuration Debug CODE_SIGNING_ALLOWED=NO build
+```
+
+The product lands in **DerivedData**, a disposable hashed cache that a clean
+build wipes and that changes if the repo moves — never treat its path as
+permanent:
+`~/Library/Developer/Xcode/DerivedData/md-preview-*/Build/Products/Debug/Markdown Preview.app`
+
+### Run
+
+```bash
+APP="$(xcodebuild -project md-preview.xcodeproj -scheme md-preview -configuration Debug \
+  -showBuildSettings 2>/dev/null | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2}')/Markdown Preview.app"
+open -a "$APP" README.md
+open -a "$APP" docs guides      # several folders -> one window
+```
+
+### Install a stable copy
+
+Copy it out of DerivedData so the path survives clean builds and repo moves.
+The dev build's bundle id is `doc.md-preview.dev`, so it coexists with any
+released `doc.md-preview` install and appears as "Markdown Preview (dev)":
+
+```bash
+ditto "$APP" "/Applications/Markdown Preview (dev).app"
+open "/Applications/Markdown Preview (dev).app"
+```
+
+### Update the installed copy after code changes
+
+The `/Applications` copy is a snapshot; it does not track DerivedData. Rebuild,
+then re-copy:
+
+```bash
+xcodebuild -project md-preview.xcodeproj -scheme md-preview -configuration Debug \
+  CODE_SIGNING_ALLOWED=NO build
+ditto "$APP" "/Applications/Markdown Preview (dev).app"
+```
+
+### Notes
+
+- Unsigned/ad-hoc: if Gatekeeper blocks first launch, right-click -> Open once.
+- **Quick Look** from Finder uses whichever registered app LaunchServices
+  picks; a DerivedData or dev build can shadow a released one. Reset the
+  database with `lsregister -kill -r -domain local -domain user` (the tool is
+  under `.../CoreServices/.../LaunchServices.framework/Support/`).
+- The `mdp` / `md-preview` CLI (installed from a released app) runs
+  `open -b "doc.md-preview"`, i.e. it targets the **released** bundle id, not
+  the `.dev` build. Test the local build with `open -a "$APP"` instead.
+- To keep current with upstream: `git fetch` the upstream remote, merge, then
+  rebuild. Watch `Version.xcconfig`, `Info.plist` (`SUFeedURL`, `SUPublicEDKey`),
+  and `project.pbxproj` (`DEVELOPMENT_TEAM`) in the merge — those carry the
+  upstream signing identity this fork does not own.
