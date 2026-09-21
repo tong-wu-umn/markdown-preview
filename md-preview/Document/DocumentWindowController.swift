@@ -55,6 +55,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     var currentMarkdown: String?
     var backHistory: [HistoryEntry] = []
     var forwardHistory: [HistoryEntry] = []
+    /// Last known preview scroll offset per file, keyed by standardized URL.
+    /// Lets a plain file switch (sidebar or in-window link) return to where
+    /// the user was, not just back/forward. Lives for the window's lifetime.
+    var scrollMemory: [URL: CGFloat] = [:]
     weak var navigationItem: NSToolbarItemGroup?
     private var fileWatcher: FileWatcher?
     private let fullscreenToolbarTheme = FullscreenToolbarTheme()
@@ -447,11 +451,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         refreshOpenActionsItem()
         updateEditToolbarItem()
         // History restore wins over the link fragment — back/forward returns
-        // to where the user actually was.
+        // to where the user actually was. An explicit fragment wins over the
+        // remembered offset, so a link to another file still jumps to its
+        // anchor; a plain switch back to a visited file restores its offset.
         if let restoredScrollPosition {
             split?.prepareToScrollAfterNavigation(to: .position(restoredScrollPosition))
         } else if let fragment {
             split?.prepareToScrollAfterNavigation(to: .anchor(fragment))
+        } else if let remembered = scrollMemory[url.standardizedFileURL] {
+            split?.prepareToScrollAfterNavigation(to: .position(remembered))
         } else {
             split?.prepareToScrollAfterNavigation(to: nil)
         }
@@ -469,6 +477,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
             scrollPosition: (documentWindow.contentViewController as? MainSplitViewController)?
                 .previewScrollPosition ?? 0
         )
+        // Remember where we left this file so returning to it via any path
+        // (sidebar, link, back/forward) restores the offset.
+        scrollMemory[departed.url] = departed.scrollPosition
         defer { updateNavigationItem() }
         switch intent {
         case .normal:
