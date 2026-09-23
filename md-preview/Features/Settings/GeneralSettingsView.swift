@@ -54,6 +54,11 @@ struct GeneralSettingsView: View {
                     Text(L("Reopen last folders at launch"))
                     Text(L("When the app starts on its own, it re-mounts the Project Navigator folders you had open at last quit instead of asking you to choose a file. Turn this off to start with the Open panel."))
                 }
+
+                Toggle(isOn: $model.showsPlainTextFilesInNavigator) {
+                    Text(L("Show plain-text files in navigator"))
+                    Text(L("Lists .txt files next to Markdown in the Project Navigator. Turn this off to hide them in code folders full of requirements.txt and LICENSE.txt."))
+                }
             } header: {
                 Text(L("Windows"))
             }

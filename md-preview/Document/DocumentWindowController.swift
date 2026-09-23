@@ -390,7 +390,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
             renderCurrentDocument(text: markdown, fileURL: fileURL)
             startWatching(fileURL)
-            offerToBecomeDefaultHandlerIfNeeded()
+            offerToBecomeDefaultHandlerIfNeeded(openedFileURL: fileURL)
         }
     }
 
@@ -465,7 +465,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
         loadFile(at: url)
         startWatching(url)
-        offerToBecomeDefaultHandlerIfNeeded()
+        offerToBecomeDefaultHandlerIfNeeded(openedFileURL: url)
     }
 
     /// Records the navigation in history, capturing the departing scroll
@@ -558,7 +558,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
 
     private static let didOfferDefaultHandlerKey = "MarkdownPreview.didOfferAsDefaultHandler"
 
-    private func offerToBecomeDefaultHandlerIfNeeded() {
+    /// Claims the Markdown UTI once, the first time a Markdown file is shown.
+    ///
+    /// `.txt` must never reach `setDefaultApplication`: plain text is declared
+    /// at `Alternate` rank so the app appears under Finder's "Open With"
+    /// without competing with TextEdit, and `public.plain-text` is also the
+    /// parent of source code, logs, and CSV. Opening a `.txt` doesn't consume
+    /// the one-time offer for `.md` either — it only happens on Markdown.
+    private func offerToBecomeDefaultHandlerIfNeeded(openedFileURL: URL) {
+        guard SupportedDocumentTypes.kind(of: openedFileURL) == .markdown else { return }
         let key = Self.didOfferDefaultHandlerKey
         guard !UserDefaults.standard.bool(forKey: key) else { return }
 

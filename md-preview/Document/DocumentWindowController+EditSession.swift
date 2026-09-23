@@ -464,7 +464,7 @@ extension DocumentWindowController {
     func diskFileState(for url: URL?, expectedMarkdown: String?) -> DiskFileState {
         guard let url, let expectedMarkdown else { return .unreadable }
         do {
-            let diskMarkdown = try String(contentsOf: url, encoding: .utf8)
+            let diskMarkdown = try SupportedDocumentTypes.readText(at: url).text
             return diskMarkdown == expectedMarkdown ? .unchanged : .modified(diskMarkdown)
         } catch {
             return FileManager.default.fileExists(atPath: url.path) ? .unreadable : .missing
@@ -723,7 +723,7 @@ extension DocumentWindowController {
                 // The sheet may remain open while another editor writes
                 // again. Reload the latest bytes instead of the snapshot
                 // captured when the conflict was first detected.
-                if let latestMarkdown = try? String(contentsOf: fileURL, encoding: .utf8) {
+                if let latestMarkdown = try? SupportedDocumentTypes.readText(at: fileURL).text {
                     completion(.reloaded(latestMarkdown))
                 } else {
                     completion(.reloaded(externalMarkdown))
@@ -765,7 +765,50 @@ extension DocumentWindowController {
         }
     }
 
+    /// Writes are always UTF-8. A file that was decoded from another encoding
+    /// (a Latin-1 or UTF-16 `.txt`) is never silently re-encoded: an explicit
+    /// save asks before converting, and auto-save leaves it unsaved until the
+    /// user decides.
     private func persistEditedMarkdown(
+        _ text: String,
+        to url: URL,
+        completion: @escaping (EditedMarkdownSaveResult) -> Void
+    ) {
+        guard let diskEncoding = try? SupportedDocumentTypes.readText(at: url).encoding,
+              diskEncoding != .utf8 else {
+            writeEditedMarkdown(text, to: url, completion: completion)
+            return
+        }
+        guard !isPerformingAutomaticSave else {
+            completion(.cancelled)
+            return
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = NSLocalizedString(
+            "Convert this file to UTF-8?",
+            comment: "Non-UTF-8 save alert title"
+        )
+        alert.informativeText = String(
+            format: NSLocalizedString(
+                "%1$@ is encoded as %2$@. Markdown Preview saves files as UTF-8, which other apps that expect the original encoding may display differently.",
+                comment: "Non-UTF-8 save alert message: file name, encoding name"
+            ),
+            url.lastPathComponent,
+            String.localizedName(of: diskEncoding)
+        )
+        alert.addButton(withTitle: NSLocalizedString("Convert to UTF-8", comment: "Non-UTF-8 save alert button"))
+        alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Alert button"))
+        alert.beginSheetModal(for: documentWindow) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else {
+                completion(.cancelled)
+                return
+            }
+            self.writeEditedMarkdown(text, to: url, completion: completion)
+        }
+    }
+
+    private func writeEditedMarkdown(
         _ text: String,
         to url: URL,
         completion: @escaping (EditedMarkdownSaveResult) -> Void

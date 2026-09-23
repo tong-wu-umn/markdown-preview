@@ -105,6 +105,14 @@ final class SettingsModel {
         }
     }
 
+    var showsPlainTextFilesInNavigator: Bool {
+        didSet {
+            guard !isRestoringExternalValues,
+                  showsPlainTextFilesInNavigator != oldValue else { return }
+            NavigatorPlainTextSetting.isEnabled = showsPlainTextFilesInNavigator
+        }
+    }
+
     var sendsCrashReports: Bool {
         didSet {
             guard !isRestoringExternalValues, sendsCrashReports != oldValue else { return }
@@ -267,6 +275,7 @@ final class SettingsModel {
         opensDocumentsInTabs = TabOpeningPolicy.isEnabled
         opensMarkdownLinksInNewWindows = UserDefaults.standard.bool(forKey: "MarkdownPreview.opensMarkdownLinksInNewWindows")
         restoresLastFoldersAtLaunch = SessionRestoreSetting.isEnabled
+        showsPlainTextFilesInNavigator = NavigatorPlainTextSetting.isEnabled
         sendsCrashReports = CrashReporter.isEnabled
         themeColors = ThemeColorsSetting.current
         sharesAnonymousUsageAnalytics = UsageAnalyticsReporter.isEnabled
@@ -323,6 +332,7 @@ final class SettingsModel {
         opensDocumentsInTabs = TabOpeningPolicy.isEnabled
         opensMarkdownLinksInNewWindows = UserDefaults.standard.bool(forKey: "MarkdownPreview.opensMarkdownLinksInNewWindows")
         restoresLastFoldersAtLaunch = SessionRestoreSetting.isEnabled
+        showsPlainTextFilesInNavigator = NavigatorPlainTextSetting.isEnabled
         sendsCrashReports = CrashReporter.isEnabled
         themeColors = ThemeColorsSetting.current
         sharesAnonymousUsageAnalytics = UsageAnalyticsReporter.isEnabled

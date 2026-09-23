@@ -75,7 +75,7 @@ brew install --cask markdown-preview
 - **Mermaid diagrams** — fenced `mermaid` code blocks render as diagrams in both the app and Quick Look previews, using a bundled renderer so previews work offline without a CDN request.
 - **Math equations** — LaTeX inline (`$x_1 + x_2$`), display (`$$\int_0^1 x^2\,dx$$`), and fenced `math` blocks render with a bundled KaTeX. Selecting a rendered formula and copying yields the original LaTeX source (via the official `copy-tex` extension).
 - **Document outline** — sidebar TOC that mirrors your headings; click to jump.
-- **File navigator** — browse Markdown files in the sidebar. Click a folder's name, icon, or empty row space to expand or collapse it, or use its disclosure triangle. Click a file to open its preview. Show several folders in one window with *File → Add Folder to Navigator…*, by dropping folders onto the navigator, or by passing several folders to `mdp` or the open panel; right-click a top-level folder to *Remove from Navigator*.
+- **File navigator** — browse Markdown files (and `.txt` files, unless you turn off *Settings → General → Show plain-text files in navigator*) in the sidebar. Click a folder's name, icon, or empty row space to expand or collapse it, or use its disclosure triangle. Click a file to open its preview. Show several folders in one window with *File → Add Folder to Navigator…*, by dropping folders onto the navigator, or by passing several folders to `mdp` or the open panel; right-click a top-level folder to *Remove from Navigator*.
 - **Inspector panel** — toggleable side panel with file metadata.
 - **In-document search** — toolbar search field plus standard <kbd>⌘F</kbd> / <kbd>⌘G</kbd> / <kbd>⌘⇧G</kbd> for next/previous match.
 - **Open With** — switch to your real editor (VS Code, Cursor, Zed, Sublime, BBEdit, Nova, CotEditor, TextMate, MacVim, Xcode, TextEdit) without leaving the preview. The list filters to apps that actually declare an editor role for Markdown, and remembers your pick.
@@ -90,8 +90,23 @@ brew install --cask markdown-preview
 
 ## Supported file types
 
-`.md`, `.markdown`, `.mdown`, `.mdx`, `.txt`
-UTI: `net.daringfireball.markdown`
+Markdown: `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`, `.mdwn`, `.mdtxt`, `.mdtext`, `.mdx`
+UTI: `net.daringfireball.markdown` (plus the app's exported Markdown UTIs), rank `Owner`
+
+Plain text: `.txt`, `.text` — declared by extension at rank `Alternate`
+(`public.plain-text` itself also covers source code, `.log`, and `.csv`, which
+the app deliberately doesn't claim).
+
+- A `.txt` renders as Markdown, and its links, navigator row, and Open panel
+  entry work like a `.md` file's.
+- The app appears under Finder's *Open With* for `.txt` but never makes itself
+  the default `.txt` app, and the first-launch default-handler offer only covers
+  `.md`.
+- Quick Look for `.txt` stays with the system preview; the extension handles
+  Markdown only.
+- Non-UTF-8 text (UTF-16 with a BOM, Windows-1252 / Latin-1) opens too. Saving
+  an edit asks before converting such a file to UTF-8, and auto-save leaves it
+  unsaved until you do.
 
 ## Requirements
 

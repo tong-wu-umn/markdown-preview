@@ -4,11 +4,15 @@
 
 ### Added
 
+- **Show plain-text files in the navigator.** `.txt` files are listed next to Markdown in the Project Navigator. Turn this off in *Settings → General → Windows → Show plain-text files in navigator* to hide `requirements.txt`, `LICENSE.txt`, and similar files in code folders; the tree keeps its expanded folders when you toggle it.
+- **More Markdown extensions in the navigator and links.** The Project Navigator now lists `.mkdn`, `.mdtxt`, and `.mdtext` files, and links to `.mdwn`, `.mdtxt`, and `.mdtext` files open in-app, matching the file types the app already registered.
 - **Reopen last folders at launch.** When Markdown Preview starts on its own, it re-mounts the Project Navigator folders you had open at last quit instead of asking you to choose a file, so you pick up where you left off. Turn it off in *Settings → General → Windows → Reopen last folders at launch* to start with the open panel instead.
 - **Show several folders in one Project Navigator window.** Mount additional root folders with *File → Add Folder to Navigator…*, by dropping folders onto the navigator, or by passing several folders to `mdp` (`mdp docs guides`) or the open panel — each keeps its own expanded tree and file watching. Right-click a top-level folder to *Remove from Navigator*. Opening a file outside every mounted folder no longer discards a navigator you assembled by hand.
 
 ### Fixed
 
+- **Plain-text `.txt` files open in Markdown Preview.** They were listed as supported but were never registered, so opening one from Finder's *Open With*, `mdp`, or an `md-preview://` link failed, and links to `.txt` files opened TextEdit. `.txt` and `.text` files now open and render as Markdown. The app appears under *Open With* for them without becoming the default `.txt` app, and Quick Look for `.txt` stays with the system.
+- **Legacy-encoded text files open.** Files in UTF-16 (with a BOM), Windows-1252, or Latin-1 no longer fail with a "corrupt file" error. Saving an edit to such a file asks before converting it to UTF-8.
 - **Opening several folders at once shows them all.** `mdp a b`, `md-preview://` links, and multi-folder open-panel selections previously kept only the last folder; they now mount every folder into one window.
 
 ## [0.0.59] – 2026-09-21

@@ -6,8 +6,6 @@
 import Cocoa
 
 private final class FileNode {
-    static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mdwn", "mdx"]
-
     let url: URL
     let isDirectory: Bool
     private var loadedChildren: [FileNode]?
@@ -30,6 +28,7 @@ private final class FileNode {
             loadedChildren = []
             return []
         }
+        let showsPlainText = NavigatorPlainTextSetting.isEnabled
         let entries = (try? FileManager.default.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -37,7 +36,7 @@ private final class FileNode {
         let nodes: [FileNode] = entries.compactMap { entry in
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             if isDir { return FileNode(url: entry, isDirectory: true) }
-            guard FileNode.markdownExtensions.contains(entry.pathExtension.lowercased()) else { return nil }
+            guard NavigatorPlainTextSetting.shouldList(entry, showsPlainText: showsPlainText) else { return nil }
             return FileNode(url: entry, isDirectory: false)
         }
         let sorted = nodes.sorted { lhs, rhs in
@@ -123,6 +122,15 @@ final class ProjectNavigatorView: NSView {
         outlineView.registerForDraggedTypes([.fileURL])
 
         setUpEmptyState()
+
+        // Re-filter in place when "Show plain-text files" flips, keeping
+        // expansion and selection — the same path a folder change takes.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigatorFilterDidChange),
+            name: NavigatorPlainTextSetting.didChangeNotification,
+            object: nil
+        )
 
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: topAnchor),
@@ -275,6 +283,14 @@ final class ProjectNavigatorView: NSView {
         for child in kids where child.isDirectory {
             collectLoadedDirectories(child, into: &set)
         }
+    }
+
+    @objc private func navigatorFilterDidChange() {
+        refreshTree()
+        // Re-select the open document; a now-hidden `.txt` simply ends up
+        // with no selected row.
+        if let currentFileURL, selectPath(to: currentFileURL) { return }
+        outlineView.deselectAll(nil)
     }
 
     private func handleFolderChange() {
@@ -443,7 +459,7 @@ final class ProjectNavigatorView: NSView {
     @objc private func copyContents(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         Task { @concurrent in
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+            guard let text = try? SupportedDocumentTypes.readText(at: url).text else { return }
             await MainActor.run {
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()

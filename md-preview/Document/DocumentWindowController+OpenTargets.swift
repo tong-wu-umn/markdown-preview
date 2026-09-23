@@ -450,7 +450,7 @@ extension DocumentWindowController {
 
     private func llmEmbeddedMarkdownPrompt(for fileURL: URL) -> String {
         guard let markdown = currentMarkdown
-                ?? (try? String(contentsOf: fileURL, encoding: .utf8)),
+                ?? (try? SupportedDocumentTypes.readText(at: fileURL).text),
               !markdown.isEmpty else {
             return llmPathPrompt(for: fileURL)
         }
@@ -471,8 +471,6 @@ extension DocumentWindowController {
     }
 
     // MARK: - Open With
-
-    static let markdownFileExtensions = ["md", "markdown", "mdown", "mdx", "txt"]
 
     func makeOpenWithItem() -> NSToolbarItem {
         let item = NSMenuToolbarItem(itemIdentifier: .openWith)

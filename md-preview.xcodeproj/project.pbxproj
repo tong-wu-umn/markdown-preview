@@ -94,6 +94,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Helpers/ChromeStripClickThrough.swift,
+				Helpers/SupportedDocumentTypes.swift,
 				Rendering/CodeFenceInfo.swift,
 				Rendering/CodeHighlighter.swift,
 				Rendering/DocumentFontSetting.swift,

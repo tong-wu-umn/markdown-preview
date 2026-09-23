@@ -1581,8 +1581,10 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
         NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
 
+    /// Links to Markdown and `.txt` files open in-app; anything else goes to
+    /// the system handler.
     private static func isMarkdownDocument(_ url: URL) -> Bool {
-        ["md", "markdown", "mdown", "mkdn", "mkd", "mdx"].contains(url.pathExtension.lowercased())
+        SupportedDocumentTypes.isOpenable(url)
     }
 
     private static func reattachingFragment(of source: URL, to target: URL) -> URL {

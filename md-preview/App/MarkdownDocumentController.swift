@@ -7,8 +7,6 @@ import Cocoa
 import UniformTypeIdentifiers
 
 final class MarkdownDocumentController: NSDocumentController {
-    private static let markdownFileExtensions = ["md", "markdown", "mdown", "mdx", "txt"]
-
     override func beginOpenPanel(
         _ openPanel: NSOpenPanel,
         forTypes inTypes: [String]?
@@ -20,8 +18,7 @@ final class MarkdownDocumentController: NSDocumentController {
             "Choose a Markdown file or folder",
             comment: "Open panel prompt"
         )
-        openPanel.allowedContentTypes = Self.markdownFileExtensions
-            .compactMap { UTType(filenameExtension: $0) }
+        SupportedDocumentOpenPanelFilter.configure(openPanel)
         return await super.beginOpenPanel(openPanel, forTypes: inTypes)
     }
 

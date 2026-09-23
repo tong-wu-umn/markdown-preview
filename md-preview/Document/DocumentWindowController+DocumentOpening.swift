@@ -194,15 +194,14 @@ extension DocumentWindowController {
             "Choose a Markdown file or folder",
             comment: "Open panel prompt"
         )
-        panel.allowedContentTypes = Self.markdownFileExtensions
-            .compactMap { UTType(filenameExtension: $0) }
+        SupportedDocumentOpenPanelFilter.configure(panel)
         return panel
     }
 
     func loadFile(at url: URL, silentOnFailure: Bool = false) {
         Task { @concurrent [weak self] in
             do {
-                let text = try String(contentsOf: url, encoding: .utf8)
+                let text = try SupportedDocumentTypes.readText(at: url).text
                 await self?.applyLoadedMarkdown(text, fileURL: url)
             } catch {
                 // Wrap as NSError (Sendable) so the original presentation —
