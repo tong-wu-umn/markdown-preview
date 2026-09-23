@@ -199,6 +199,9 @@
 /* Class = "NSMenuItem"; title = "Zoom Out"; ObjectID = "mdp-zo-itm"; */
 "mdp-zo-itm.title" = "缩小";
 
+/* Class = "NSMenuItem"; title = "Render as Markdown"; ObjectID = "mdp-ram-itm"; */
+"mdp-ram-itm.title" = "按 Markdown 渲染";
+
 /* Class = "NSMenuItem"; title = "Actual Size"; ObjectID = "mdp-zr-itm"; */
 "mdp-zr-itm.title" = "实际大小";
 

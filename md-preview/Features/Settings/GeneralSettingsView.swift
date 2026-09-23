@@ -59,6 +59,11 @@ struct GeneralSettingsView: View {
                     Text(L("Show plain-text files in navigator"))
                     Text(L("Lists .txt files next to Markdown in the Project Navigator. Turn this off to hide them in code folders full of requirements.txt and LICENSE.txt."))
                 }
+
+                Toggle(isOn: $model.usesMonospacedPlainText) {
+                    Text(L("Monospaced font for plain text"))
+                    Text(L("A .txt file shown as plain text uses a fixed-width font, so ASCII tables and diagrams line up. Turn this off to use the document font. Switch a file between plain text and Markdown with View → Render as Markdown."))
+                }
             } header: {
                 Text(L("Windows"))
             }

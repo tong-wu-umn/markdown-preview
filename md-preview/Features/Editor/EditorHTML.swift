@@ -12,6 +12,14 @@ nonisolated enum EditorHTML {
         var themeOverrideCSS = ""
         var usesPageScrolling = false
         var bridgeName = "mdEditorHost"
+        /// Load without Markdown decorations (a `.txt` shown as plain text).
+        var plainText = false
+        var plainTextFont: MarkdownHTML.PlainTextFont = .monospaced
+    }
+
+    /// The options object `__mdLoadEditor` passes to `MDEditor.create`.
+    static func loadOptionsLiteral(plainText: Bool, plainTextFont: MarkdownHTML.PlainTextFont) -> String {
+        "{ plainText: \(plainText), plainTextMonospaced: \(plainText && plainTextFont == .monospaced) }"
     }
 
     static func render(markdown: String,
@@ -126,6 +134,14 @@ nonisolated enum EditorHTML {
         /* Hanging trailing spaces must not push the last word onto a new
            line. Match read-mode wrapping while preserving editable spaces. */
         #editor .cm-content.cm-lineWrapping { white-space: pre-wrap; }
+        /* Plain-text editing matches the plain-text preview: literal text,
+           wrapped anywhere, in the code face when that's the chosen font. */
+        #editor .cm-md-plain-text .cm-content { overflow-wrap: anywhere; tab-size: 4; }
+        #editor .cm-md-plain-text-mono .cm-scroller {
+            font-family: \(MarkdownHTML.codeFontFamily) !important;
+            font-size: \(MarkdownHTML.bodyFontSize * 0.9)px;
+            line-height: 1.45;
+        }
         #editor .cm-line[dir="rtl"] { text-align: right; }
         #editor .cm-line[dir="ltr"] { text-align: left; }
 
@@ -633,7 +649,7 @@ nonisolated enum EditorHTML {
             };
             window.onerror = function (message) { post("error: " + message); };
             let editor = null;
-            window.__mdLoadEditor = function (markdown, baseHref) {
+            window.__mdLoadEditor = function (markdown, baseHref, options) {
                 let base = document.querySelector("head > base");
                 if (baseHref) {
                     if (!base) {
@@ -649,6 +665,8 @@ nonisolated enum EditorHTML {
                     document.getElementById("editor"),
                     markdown,
                     {
+                        plainText: !!(options && options.plainText),
+                        plainTextMonospaced: !!(options && options.plainTextMonospaced),
                         pageScrolling: \(usesPageScrolling),
                         onDirty: function () { post("dirty"); },
                         onSearchChange: function (result) {
@@ -695,7 +713,7 @@ nonisolated enum EditorHTML {
             document.addEventListener("keydown", function (e) {
                 if (e.key === "Escape" && !e.defaultPrevented) post("cancel");
             });
-            window.__mdLoadEditor(\(jsStringLiteral(markdown)), \(jsStringLiteral(assetBaseURL.map { MarkdownAssetResolution.baseHref(forFolder: $0) } ?? "")));
+            window.__mdLoadEditor(\(jsStringLiteral(markdown)), \(jsStringLiteral(assetBaseURL.map { MarkdownAssetResolution.baseHref(forFolder: $0) } ?? "")), \(loadOptionsLiteral(plainText: configuration.plainText, plainTextFont: configuration.plainTextFont)));
         })();
         </script>
         </body>

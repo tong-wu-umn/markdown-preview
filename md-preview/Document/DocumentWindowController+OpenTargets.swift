@@ -442,8 +442,9 @@ extension DocumentWindowController {
     }
 
     private func llmPathPrompt(for fileURL: URL) -> String {
-        """
-        Open this Markdown file and use it as the working context:
+        let kind = SupportedDocumentTypes.kind(of: fileURL) == .plainText ? "text" : "Markdown"
+        return """
+        Open this \(kind) file and use it as the working context:
         \(fileURL.path)
         """
     }
@@ -455,16 +456,21 @@ extension DocumentWindowController {
             return llmPathPrompt(for: fileURL)
         }
 
+        // A `.txt` shown as plain text goes to the LLM as plain text, so the
+        // model doesn't read literal `#` or `*` as Markdown structure.
+        let isPlainText = renderMode(for: markdown, fileURL: fileURL) == .plainText
+        let kind = isPlainText ? "text" : "Markdown"
+        let fence = isPlainText ? "text" : "markdown"
         return """
-        Use this Markdown document as the working context.
+        Use this \(kind) document as the working context.
 
         The local path is included only as a reference. Do not rely on opening it to read the document contents.
 
         File name: \(fileURL.lastPathComponent)
         Local path: \(fileURL.path)
 
-        Markdown content:
-        ````markdown
+        \(isPlainText ? "Text" : "Markdown") content:
+        ````\(fence)
         \(markdown)
         ````
         """

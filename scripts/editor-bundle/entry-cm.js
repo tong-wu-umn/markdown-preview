@@ -2288,7 +2288,46 @@ function indentMarkdownListItems(view) {
 window.MDEditor = {
   create(parent, doc, callbacks) {
     const onDirty = callbacks && callbacks.onDirty
-    const onPasteImage = callbacks && callbacks.onPasteImage
+    // Plain-text documents (a .txt rendered as plain text) edit the text as
+    // written: no Markdown language, live-preview decorations, widgets, or
+    // Markdown keymaps, and pasted images don't turn into Markdown links.
+    const plainText = !!(callbacks && callbacks.plainText)
+    const onPasteImage = plainText ? null : callbacks && callbacks.onPasteImage
+    const markdownExtensions = plainText ? [] : [
+      // Parse a leading `---` block as YAML frontmatter so its lines
+      // never surface as a thematic break plus setext heading.
+      yamlFrontmatter({
+        content: markdown({
+          base: markdownLanguage,
+          codeLanguages,
+          extensions: obsidianHighlight,
+        }),
+      }),
+      activeCodeBlock,
+      mermaidPreviews,
+      tableEditors,
+      syntaxHighlighting(codeHighlight),
+      livePreview,
+      alignInactiveHeadings,
+      autoCloseFence,
+      closeBrackets(),
+    ]
+    const editorKeymap = plainText ? [
+      { key: "Tab", run: insertTab, shift: indentLess },
+      ...defaultKeymap,
+      ...historyKeymap,
+    ] : [
+      { key: "Mod-b", run: toggleInlineMark("**") },
+      { key: "Mod-i", run: toggleInlineMark("*") },
+      { key: "Tab", run: indentMarkdownListItems, shift: indentLess },
+      ...closeBracketsKeymap,
+      ...markdownKeymap,
+      ...defaultKeymap,
+      ...historyKeymap,
+    ]
+    const plainTextClasses = !plainText ? null
+      : callbacks.plainTextMonospaced ? "cm-md-plain-text cm-md-plain-text-mono"
+      : "cm-md-plain-text"
     // Live preview spacing tokens from the host stylesheet (MarkdownHTML
     // constants) — see METRICS for the headless defaults.
     Object.assign(METRICS, (callbacks && callbacks.spacing) || {})
@@ -2310,35 +2349,12 @@ window.MDEditor = {
           EditorView.perLineTextDirection.of(true),
           indentUnit.of("    "),
           directionLines,
-          // Parse a leading `---` block as YAML frontmatter so its lines
-          // never surface as a thematic break plus setext heading.
-          yamlFrontmatter({
-            content: markdown({
-              base: markdownLanguage,
-              codeLanguages,
-              extensions: obsidianHighlight,
-            }),
-          }),
-          activeCodeBlock,
-          mermaidPreviews,
-          tableEditors,
-          syntaxHighlighting(codeHighlight),
-          livePreview,
-          alignInactiveHeadings,
-          autoCloseFence,
-          closeBrackets(),
+          ...markdownExtensions,
+          plainTextClasses ? EditorView.editorAttributes.of({ class: plainTextClasses }) : [],
           // paragraphReflow deliberately omitted: the preview renders
           // single newlines as hard breaks, so the
           // editor keeps them visible instead of joining lines.
-          keymap.of([
-            { key: "Mod-b", run: toggleInlineMark("**") },
-            { key: "Mod-i", run: toggleInlineMark("*") },
-            { key: "Tab", run: indentMarkdownListItems, shift: indentLess },
-            ...closeBracketsKeymap,
-            ...markdownKeymap,
-            ...defaultKeymap,
-            ...historyKeymap,
-          ]),
+          keymap.of(editorKeymap),
           // Fires on every change; the host debounces for autosave.
           EditorView.updateListener.of((update) => {
             if (update.docChanged && callbacks?.onSearchChange) {
@@ -2452,7 +2468,8 @@ window.MDEditor = {
         }
         return { index: search.index + 1, total: search.matches.length }
       },
-      isSyntaxReady: () => syntaxTreeAvailable(view.state, view.state.doc.length),
+      // Plain text has no parser to wait for.
+      isSyntaxReady: () => plainText || syntaxTreeAvailable(view.state, view.state.doc.length),
       replaceMarkdown: (markdown) => {
         const text = String(markdown || "")
         const length = text.length
@@ -2564,7 +2581,8 @@ window.MDEditor = {
         })
       },
       exec: (name) => {
-        const command = commands[name]
+        // Formatting commands insert Markdown syntax; plain text has none.
+        const command = plainText ? null : commands[name]
         if (command) { command(view); view.focus() }
       },
       performTableContextAction: (token, action) => {

@@ -22,10 +22,10 @@ extension DocumentWindowController {
         isEditing || currentMarkdown != nil
     }
 
-    var canFormatMarkdown: Bool { isEditing }
+    var canFormatMarkdown: Bool { isEditing && editorRenderMode == .markdown }
 
     func formatMarkdown(_ command: String) {
-        guard isEditing else { return }
+        guard canFormatMarkdown else { return }
         mainSplit?.editorViewController?.exec(command)
     }
 

@@ -305,6 +305,11 @@
 "A file opened from Finder joins the front window as a tab instead of getting one of its own — Open in New Window still opens a window." = "A file opened from Finder joins the front window as a tab instead of getting one of its own — Open in New Window still opens a window.";
 "Show plain-text files in navigator" = "Show plain-text files in navigator";
 "Lists .txt files next to Markdown in the Project Navigator. Turn this off to hide them in code folders full of requirements.txt and LICENSE.txt." = "Lists .txt files next to Markdown in the Project Navigator. Turn this off to hide them in code folders full of requirements.txt and LICENSE.txt.";
+"Monospaced font for plain text" = "Monospaced font for plain text";
+"A .txt file shown as plain text uses a fixed-width font, so ASCII tables and diagrams line up. Turn this off to use the document font. Switch a file between plain text and Markdown with View → Render as Markdown." = "A .txt file shown as plain text uses a fixed-width font, so ASCII tables and diagrams line up. Turn this off to use the document font. Switch a file between plain text and Markdown with View → Render as Markdown.";
+"No outline for plain text" = "No outline for plain text";
+"Plain Text Document" = "Plain Text Document";
+"Plain text has no frontmatter" = "Plain text has no frontmatter";
 "Convert this file to UTF-8?" = "Convert this file to UTF-8?";
 "%1$@ is encoded as %2$@. Markdown Preview saves files as UTF-8, which other apps that expect the original encoding may display differently." = "%1$@ is encoded as %2$@. Markdown Preview saves files as UTF-8, which other apps that expect the original encoding may display differently.";
 "Convert to UTF-8" = "Convert to UTF-8";

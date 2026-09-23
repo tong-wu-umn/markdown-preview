@@ -1,8 +1,32 @@
 # `.txt` file support: plan
 
-Status: **Phase 1 implemented; Phase 2 not started** (deferred until Phase 1
-has been used for a while, per §1). Written against `main` at `1e4f21e`
-(0.0.59 + Unreleased).
+Status: **Phase 1 and Phase 2 implemented.** Written against `main` at
+`1e4f21e` (0.0.59 + Unreleased).
+
+Where the Phase 2 implementation departs from this plan:
+
+- **Markup:** the body is `<div class="mdp-plain-text">`, not `<pre>`, so none
+  of the stylesheet's `pre` chrome (background, border, horizontal scroll,
+  copy button) applies. It carries `data-source-start/end` spanning every line,
+  so the edit-mode scroll hand-off maps proportionally. It deliberately has no
+  `data-source-line`, which would opt it into copy-as-Markdown-source.
+- **Font:** monospaced by default (like TextEdit's plain-text mode, and so
+  ASCII art lines up). *Settings → General → Monospaced font for plain text*
+  switches to the document font. The plan had the document font as default.
+- **Shortcut:** *View → Render as Markdown* is unbound. ⌥⌘M is the system's
+  Minimize All (the Option alternate of ⌘M).
+- **Toggle while editing:** disabled. The editor keeps the mode it was entered
+  with instead of reloading under the cursor.
+- **Heuristic:** only the first 64 KB are parsed. Lists, quotes, emphasis,
+  indented code, setext headings, and `<url>` autolinks don't count as
+  Markdown signals.
+- **Edit mode:** the CodeMirror bundle gained a `plainText` option, with no
+  Markdown language, live-preview decorations, widgets, Markdown keymap, or
+  image paste; formatting commands are inert. `scripts/editor-bundle`
+  reproduces the committed bundle byte for byte before the change, and the
+  smoke test covers plain mode.
+- **Scroll across a toggle:** restores the pixel offset (the navigation
+  scroll-target path), not a proportional position.
 
 Where the Phase 1 implementation departs from this plan:
 

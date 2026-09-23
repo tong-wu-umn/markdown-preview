@@ -283,53 +283,25 @@ nonisolated enum MarkdownHTML {
                        documentFont: DocumentFontSetting = .current,
                        readerLayout: ReaderLayoutSetting = .current,
                        warmup: Bool = false,
-                       highlightsCode: Bool = true) -> RenderedHTML {
-        let frontmatter = MarkdownFrontmatter.split(markdown)
-        let body = frontmatter.body
-        let sourceLineOffset: Int
-        if frontmatter.raw != nil,
-           let bodyRange = markdown.range(of: body, options: .backwards) {
-            sourceLineOffset = markdown[..<bodyRange.lowerBound].count(where: \.isNewline)
-        } else {
-            sourceLineOffset = 0
+                       highlightsCode: Bool = true,
+                       renderMode: RenderMode = .markdown,
+                       plainTextFont: PlainTextFont = .monospaced) -> RenderedHTML {
+        let article: ArticleBody
+        switch renderMode {
+        case .markdown:
+            article = markdownArticle(from: markdown, highlightsCode: highlightsCode)
+        case .plainText:
+            // Plain text skips frontmatter, footnotes, math, Mermaid, and
+            // highlighting, so no vendor bundle is emitted below.
+            article = ArticleBody(html: plainTextArticleHTML(markdown, font: plainTextFont),
+                                  containsMath: false,
+                                  containsMermaid: false,
+                                  containsCode: false)
         }
-        let footnotes = extractFootnotes(from: body)
-        let math = extractMath(from: footnotes.markdown)
-        let formatted = EscapingHTMLFormatter.format(
-            math.processedMarkdown,
-            sourceLineOffset: sourceLineOffset,
-            sourceMarkdown: body,
-            highlightsCode: highlightsCode
-        )
-        let mermaidResult = renderMermaidBlocks(in: formatted)
-        let mathResult = renderMathBlocks(in: mermaidResult.html, with: math)
-        let footnoteReferenceHTML = renderFootnoteReferences(in: mathResult.html, with: footnotes)
-        let footnoteDefinitions = renderFootnoteDefinitions(
-            footnotes,
-            sourceLineOffset: sourceLineOffset
-        )
-        let headingsHTML = injectHeadingIDs(in: footnoteReferenceHTML + footnoteDefinitions.html)
-        // Direction inference scans every rendered block. Most documents
-        // contain no RTL text, so avoid walking the much larger generated
-        // HTML unless the Markdown could produce an RTL first character.
-        let renderedBodyHTML = sourceMayNeedRTLDirection(body)
-            ? injectRTLDirection(in: headingsHTML)
-            : headingsHTML
-        let frontmatterHTML: String
-        if let raw = frontmatter.raw,
-           let format = frontmatter.format {
-            frontmatterHTML = renderFrontmatter(
-                raw,
-                format: format,
-                sourceEndLine: sourceLineOffset
-            )
-        } else {
-            frontmatterHTML = ""
-        }
-        let bodyHTML = frontmatterHTML + renderedBodyHTML
-        let containsMath = mathResult.containsMath || footnoteDefinitions.containsMath
-        let containsMermaid = mermaidResult.containsMermaid || footnoteDefinitions.containsMermaid
-        let containsCode = detectHighlightableCode(in: bodyHTML)
+        let bodyHTML = article.html
+        let containsMath = article.containsMath
+        let containsMermaid = article.containsMermaid
+        let containsCode = article.containsCode
         let scrollOverride = allowsScroll ? """
         <style>
         html { overflow: auto !important; }
@@ -474,6 +446,69 @@ nonisolated enum MarkdownHTML {
             containsMermaid: containsMermaid,
             containsCode: containsCode
         )
+    }
+
+    private struct ArticleBody {
+        let html: String
+        let containsMath: Bool
+        let containsMermaid: Bool
+        let containsCode: Bool
+    }
+
+    /// The Markdown article: frontmatter, footnotes, math, Mermaid, heading
+    /// ids, and RTL direction, plus which vendor renderers it needs.
+    private static func markdownArticle(from markdown: String,
+                                        highlightsCode: Bool) -> ArticleBody {
+        let frontmatter = MarkdownFrontmatter.split(markdown)
+        let body = frontmatter.body
+        let sourceLineOffset: Int
+        if frontmatter.raw != nil,
+           let bodyRange = markdown.range(of: body, options: .backwards) {
+            sourceLineOffset = markdown[..<bodyRange.lowerBound].count(where: \.isNewline)
+        } else {
+            sourceLineOffset = 0
+        }
+        let footnotes = extractFootnotes(from: body)
+        let math = extractMath(from: footnotes.markdown)
+        let formatted = EscapingHTMLFormatter.format(
+            math.processedMarkdown,
+            sourceLineOffset: sourceLineOffset,
+            sourceMarkdown: body,
+            highlightsCode: highlightsCode
+        )
+        let mermaidResult = renderMermaidBlocks(in: formatted)
+        let mathResult = renderMathBlocks(in: mermaidResult.html, with: math)
+        let footnoteReferenceHTML = renderFootnoteReferences(in: mathResult.html, with: footnotes)
+        let footnoteDefinitions = renderFootnoteDefinitions(
+            footnotes,
+            sourceLineOffset: sourceLineOffset
+        )
+        let headingsHTML = injectHeadingIDs(in: footnoteReferenceHTML + footnoteDefinitions.html)
+        // Direction inference scans every rendered block. Most documents
+        // contain no RTL text, so avoid walking the much larger generated
+        // HTML unless the Markdown could produce an RTL first character.
+        let renderedBodyHTML = sourceMayNeedRTLDirection(body)
+            ? injectRTLDirection(in: headingsHTML)
+            : headingsHTML
+        let frontmatterHTML: String
+        if let raw = frontmatter.raw,
+           let format = frontmatter.format {
+            frontmatterHTML = renderFrontmatter(
+                raw,
+                format: format,
+                sourceEndLine: sourceLineOffset
+            )
+        } else {
+            frontmatterHTML = ""
+        }
+        let bodyHTML = frontmatterHTML + renderedBodyHTML
+        let containsMath = mathResult.containsMath || footnoteDefinitions.containsMath
+        let containsMermaid = mermaidResult.containsMermaid || footnoteDefinitions.containsMermaid
+        let containsCode = detectHighlightableCode(in: bodyHTML)
+        return ArticleBody(html: bodyHTML,
+                           containsMath: containsMath,
+                           containsMermaid: containsMermaid,
+                           containsCode: containsCode)
     }
 
     private static let headingTagRegex: NSRegularExpression = {

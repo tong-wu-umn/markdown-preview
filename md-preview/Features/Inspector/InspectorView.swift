@@ -18,14 +18,32 @@ struct DocumentMetadata: Equatable {
     var modifiedDate: Date?
     var fileSize: Int64?
     var frontmatter: [FrontmatterEntry] = []
+    /// A `.txt` / `.text` file, whatever its render mode.
+    var isPlainTextFile = false
+    /// Rendered as plain text: no headings, links, images, or frontmatter.
+    var isRenderedAsPlainText = false
 }
 
 extension DocumentMetadata {
-    static func make(url: URL?, markdown: String) -> DocumentMetadata {
+    static func make(url: URL?,
+                     markdown: String,
+                     renderMode: MarkdownHTML.RenderMode = .markdown) -> DocumentMetadata {
         var meta = DocumentMetadata()
         meta.fileURL = url
         meta.fileName = url?.lastPathComponent
             ?? NSLocalizedString("Untitled", comment: "Inspector file name when no document is open")
+        meta.isPlainTextFile = url.map { SupportedDocumentTypes.kind(of: $0) == .plainText } ?? false
+
+        if renderMode == .plainText {
+            // Counts cover the whole text; there is no frontmatter and no
+            // Markdown structure to count.
+            meta.isRenderedAsPlainText = true
+            meta.characterCount = markdown.count
+            meta.wordCount = markdown.split { $0.isWhitespace }.count
+            meta.lineCount = markdown.isEmpty ? 0 : markdown.components(separatedBy: .newlines).count
+            meta.readFileAttributes()
+            return meta
+        }
 
         let split = MarkdownFrontmatter.split(markdown)
         if let raw = split.raw {
@@ -43,12 +61,15 @@ extension DocumentMetadata {
         meta.imageCount = max(0, body.components(separatedBy: "![").count - 1)
         meta.linkCount = max(0, totalRefs - meta.imageCount)
 
-        if let url,
-           let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) {
-            meta.modifiedDate = attrs[.modificationDate] as? Date
-            meta.fileSize = (attrs[.size] as? NSNumber)?.int64Value
-        }
+        meta.readFileAttributes()
         return meta
+    }
+
+    private mutating func readFileAttributes() {
+        guard let fileURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path) else { return }
+        modifiedDate = attrs[.modificationDate] as? Date
+        fileSize = (attrs[.size] as? NSNumber)?.int64Value
     }
 }
 
@@ -149,7 +170,9 @@ struct InspectorView: View {
                 }
                 LabeledContent(
                     NSLocalizedString("Document Type", comment: "Inspector field label"),
-                    value: NSLocalizedString("Markdown Document", comment: "Inspector document type")
+                    value: metadata.isPlainTextFile
+                        ? NSLocalizedString("Plain Text Document", comment: "Inspector document type")
+                        : NSLocalizedString("Markdown Document", comment: "Inspector document type")
                 )
                 if let size = metadata.fileSize {
                     LabeledContent(
@@ -174,19 +197,21 @@ struct InspectorView: View {
                 )
             }
 
-            Section {
-                LabeledContent(
-                    NSLocalizedString("Headings", comment: "Inspector field label"),
-                    value: metadata.headingCount.formatted()
-                )
-                LabeledContent(
-                    NSLocalizedString("Links", comment: "Inspector field label"),
-                    value: metadata.linkCount.formatted()
-                )
-                LabeledContent(
-                    NSLocalizedString("Images", comment: "Inspector field label"),
-                    value: metadata.imageCount.formatted()
-                )
+            if !metadata.isRenderedAsPlainText {
+                Section {
+                    LabeledContent(
+                        NSLocalizedString("Headings", comment: "Inspector field label"),
+                        value: metadata.headingCount.formatted()
+                    )
+                    LabeledContent(
+                        NSLocalizedString("Links", comment: "Inspector field label"),
+                        value: metadata.linkCount.formatted()
+                    )
+                    LabeledContent(
+                        NSLocalizedString("Images", comment: "Inspector field label"),
+                        value: metadata.imageCount.formatted()
+                    )
+                }
             }
 
             if let modified = metadata.modifiedDate {
@@ -219,7 +244,11 @@ struct InspectorView: View {
 
     @ViewBuilder
     private var propertiesTab: some View {
-        if metadata.frontmatter.isEmpty {
+        if metadata.isRenderedAsPlainText {
+            Text(NSLocalizedString("Plain text has no frontmatter", comment: "Inspector frontmatter message for plain-text rendering"))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if metadata.frontmatter.isEmpty {
             Text(NSLocalizedString("No frontmatter", comment: "Inspector empty frontmatter message"))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

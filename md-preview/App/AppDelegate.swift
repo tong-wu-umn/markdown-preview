@@ -390,6 +390,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         reloadDocumentPreviewsForSettingChange()
     }
 
+    /// Re-renders open documents so `.txt` files shown as plain text pick up
+    /// the new face. Markdown documents render identically either way.
+    func applyPlainTextFontSetting(_ font: MarkdownHTML.PlainTextFont) {
+        guard font != PlainTextFontSetting.current else { return }
+        PlainTextFontSetting.current = font
+        reloadDocumentPreviewsForSettingChange()
+    }
+
     /// Applies reading layout chosen in Customize Theme (bold text and the
     /// spacing sliders). The values are CSS custom properties, so open pages
     /// are restyled in place rather than re-rendered — cheap enough to run on

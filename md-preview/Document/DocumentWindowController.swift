@@ -81,6 +81,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     /// When sidebar navigation starts from edit mode, the newly loaded file
     /// should return to edit mode instead of dropping the user into preview.
     var pendingEditModeURL: URL?
+    /// The render mode the current edit session was entered with; plain text
+    /// disables the formatting bar and Format menu.
+    var editorRenderMode: MarkdownHTML.RenderMode = .markdown
     var autoSaveTimer: Timer?
     var autoSaveTimerID: UUID?
     var isPerformingAutomaticSave = false

@@ -90,15 +90,32 @@ final class MainSplitViewController: NSSplitViewController {
         }
     }
 
-    func display(markdown: String, fileName: String, url: URL?, assetBaseURL: URL?) {
+    func display(markdown: String,
+                 fileName: String,
+                 url: URL?,
+                 assetBaseURL: URL?,
+                 renderMode: MarkdownHTML.RenderMode = .markdown,
+                 plainTextFont: MarkdownHTML.PlainTextFont = .monospaced) {
+        displayedRenderMode = renderMode
         contentViewController?.display(
             markdown: markdown,
             sourceURL: url,
-            assetBaseURL: assetBaseURL
+            assetBaseURL: assetBaseURL,
+            renderMode: renderMode,
+            plainTextFont: plainTextFont
         )
-        sidebarViewController?.display(markdown: markdown, fileName: fileName, fileURL: url)
-        inspectorViewController?.display(metadata: DocumentMetadata.make(url: url, markdown: markdown))
+        sidebarViewController?.display(markdown: markdown,
+                                       fileName: fileName,
+                                       fileURL: url,
+                                       renderMode: renderMode)
+        inspectorViewController?.display(metadata: DocumentMetadata.make(url: url,
+                                                                         markdown: markdown,
+                                                                         renderMode: renderMode))
     }
+
+    /// The mode of the last `display`, so URL-only refreshes keep the
+    /// inspector's plain-text treatment.
+    private(set) var displayedRenderMode: MarkdownHTML.RenderMode = .markdown
 
     /// URL-only refresh after a rename. Skips the content re-render so
     /// the preview, scroll position, and active-heading highlight stay
@@ -106,7 +123,9 @@ final class MainSplitViewController: NSSplitViewController {
     func openFileURLDidChange(_ newURL: URL, markdown: String) {
         contentViewController?.sourceFileURLDidChange(newURL)
         sidebarViewController?.openFileURLDidChange(newURL)
-        inspectorViewController?.display(metadata: DocumentMetadata.make(url: newURL, markdown: markdown))
+        inspectorViewController?.display(metadata: DocumentMetadata.make(url: newURL,
+                                                                         markdown: markdown,
+                                                                         renderMode: displayedRenderMode))
     }
 
     func openFolder(_ folderURL: URL, selectedFileURL: URL?) {
@@ -356,9 +375,10 @@ final class MainSplitViewController: NSSplitViewController {
     @discardableResult
     func enterEditMode(markdown: String,
                        assetBaseURL: URL? = nil,
+                       plainText: Bool = false,
                        autofocus: Bool = false) -> EditorViewController {
         if let editor = editorViewController {
-            editor.load(markdown: markdown, assetBaseURL: assetBaseURL)
+            editor.load(markdown: markdown, assetBaseURL: assetBaseURL, plainText: plainText)
             if autofocus {
                 editor.focusEditor()
             }
@@ -407,7 +427,7 @@ final class MainSplitViewController: NSSplitViewController {
             self.revealEditorIfPrepared(editorVC)
         }
         editorVC.applyPageZoom(previewZoom)
-        editorVC.load(markdown: markdown, assetBaseURL: assetBaseURL)
+        editorVC.load(markdown: markdown, assetBaseURL: assetBaseURL, plainText: plainText)
         contentViewController?.sourceScrollAnchor { [weak self, weak editorVC] anchor in
             guard let self, let editorVC, self.isEditorPreparing else { return }
             self.pendingSourceScrollAnchor = anchor

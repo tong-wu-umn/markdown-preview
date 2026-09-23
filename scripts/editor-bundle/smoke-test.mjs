@@ -1169,4 +1169,31 @@ check("search reveals and highlights Mermaid source", blockFindHost.querySelecto
 check("searching rendered blocks preserves source", blockFindEditor.getMarkdown() === blockFindSource)
 blockFindEditor.destroy()
 
+// Plain-text mode: a .txt rendered as plain text edits the text as written.
+const plainHost = dom.window.document.createElement("div")
+dom.window.document.body.appendChild(plainHost)
+const plainSource = "# not a heading\n**not bold** | a | b |\n|---|---|\n```mermaid\ngraph LR\n```\n"
+const plainEditor = dom.window.MDEditor.create(plainHost, plainSource,
+  { plainText: true, plainTextMonospaced: true })
+const plainText = plainHost.querySelector(".cm-content")?.textContent ?? ""
+check("plain text round-trips byte-faithfully", plainEditor.getMarkdown() === plainSource)
+check("plain text shows every Markdown marker literally",
+  plainText.includes("# not a heading") && plainText.includes("**not bold**")
+    && plainText.includes("```mermaid"))
+check("plain text has no Markdown decorations or widgets",
+  plainHost.querySelector("[class*='cm-md-h'], .cm-md-strong, .cm-md-table-widget, .cm-md-codeblock") == null)
+check("plain text tags the editor for its font",
+  plainHost.querySelector(".cm-editor.cm-md-plain-text.cm-md-plain-text-mono") != null)
+check("plain text reports syntax ready without a parser", plainEditor.isSyntaxReady() === true)
+plainEditor.exec("bold")
+check("formatting commands are inert in plain text", plainEditor.getMarkdown() === plainSource)
+plainEditor.destroy()
+
+const plainDocumentFontHost = dom.window.document.createElement("div")
+dom.window.document.body.appendChild(plainDocumentFontHost)
+dom.window.MDEditor.create(plainDocumentFontHost, "text", { plainText: true })
+check("document-font plain text omits the monospaced class",
+  plainDocumentFontHost.querySelector(".cm-md-plain-text") != null
+    && plainDocumentFontHost.querySelector(".cm-md-plain-text-mono") == null)
+
 process.exit(failures ? 1 : 0)

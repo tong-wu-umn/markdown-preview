@@ -1,0 +1,22 @@
+Plain-text sample (renders as plain text)
+=========================================
+
+This file has no Markdown headings, fenced code, links, or tables, so
+Markdown Preview shows it exactly as written: the underline above stays
+an underline, these hard-wrapped lines stay short, and the bullets below
+keep their literal asterisks.
+
+* first item, meant literally
+* second item
+
+#comment lines like this one stay as they are.
+
+    +-----------+      +-----------+
+    |  client   | ---> |  server   |
+    +-----------+      +-----------+
+
+A very long line follows to show that plain text wraps inside the column instead of scrolling sideways: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+The table and art use a monospaced font by default (Settings -> General ->
+Monospaced font for plain text). Choose View -> Render as Markdown to see
+the same text reflowed as Markdown.

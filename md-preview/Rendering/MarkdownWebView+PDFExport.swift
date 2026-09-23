@@ -62,6 +62,9 @@ private enum DocumentExportFormat: String, CaseIterable {
 /// Everything the panel needs to write the non-PDF formats itself.
 private struct FileExportSource {
     let markdown: String
+    /// Plain-text `.txt` files export the plain rendering, not Markdown.
+    let renderMode: MarkdownHTML.RenderMode
+    let plainTextFont: MarkdownHTML.PlainTextFont
     let sourceURL: URL?
     let assetBaseURL: URL?
     /// Supplied by `MarkdownWebView`, which owns the live page PNG is captured
@@ -69,12 +72,14 @@ private struct FileExportSource {
     let writePNG: (URL, @escaping (Error?) -> Void) -> Void
 
     func writeHTML(to url: URL) throws {
-        let html = MarkdownHTML.makeHTML(
-            from: markdown,
+        let html = MarkdownHTML.render(
+            markdown: markdown,
             allowsScroll: true,
             assetBaseHref: assetBaseURL?.absoluteString,
-            vendorLoading: .inline
-        )
+            vendorLoading: .inline,
+            renderMode: renderMode,
+            plainTextFont: plainTextFont
+        ).html
         try html.write(to: url, atomically: true, encoding: .utf8)
     }
 }
@@ -1000,6 +1005,8 @@ extension MarkdownWebView {
     ) {
         let source = FileExportSource(
             markdown: markdown,
+            renderMode: currentRenderMode,
+            plainTextFont: currentPlainTextFont,
             sourceURL: sourceURL,
             assetBaseURL: assetBaseURL,
             writePNG: { [weak self] url, completion in

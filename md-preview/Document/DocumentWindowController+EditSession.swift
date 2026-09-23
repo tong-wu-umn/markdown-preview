@@ -18,9 +18,13 @@ extension DocumentWindowController {
 
         // Edit the complete source. Frontmatter is stripped only by the
         // read-only renderer; the editor must expose and preserve it.
+        // A `.txt` shown as plain text edits as plain text: no Markdown
+        // decorations and no formatting bar, whose commands insert Markdown.
+        editorRenderMode = renderMode(for: markdown, fileURL: currentFileURL)
         let editor = split.enterEditMode(
             markdown: markdown,
             assetBaseURL: currentFileURL?.deletingLastPathComponent(),
+            plainText: editorRenderMode == .plainText,
             autofocus: autofocus
         )
         editor.cancelRequested = { [weak self] in
@@ -43,7 +47,9 @@ extension DocumentWindowController {
             editorChangeRevision = 0
             hasUnsavedEditorChanges = false
         }
-        showEditAccessory()
+        if editorRenderMode == .markdown {
+            showEditAccessory()
+        }
         updateEditToolbarItem()
     }
 

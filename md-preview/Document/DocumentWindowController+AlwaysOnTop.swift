@@ -53,6 +53,9 @@ extension DocumentWindowController {
         if menuItem.action == #selector(saveDocument(_:)) {
             return isEditing
         }
+        if menuItem.action == #selector(toggleRenderAsMarkdown(_:)) {
+            return validateRenderModeMenuItem(menuItem)
+        }
         if menuItem.action == #selector(toggleAlwaysOnTop(_:)) {
             menuItem.state = isAlwaysOnTop ? .on : .off
             menuItem.image = Self.alwaysOnTopMenuImage(isPinned: isAlwaysOnTop)

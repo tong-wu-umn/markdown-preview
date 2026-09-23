@@ -305,6 +305,11 @@
 "A file opened from Finder joins the front window as a tab instead of getting one of its own — Open in New Window still opens a window." = "从“访达”打开的文件会作为标签页加入最前面的窗口，而不是各自新建一个窗口——“在新窗口中打开”仍会打开新窗口。";
 "Show plain-text files in navigator" = "在导航器中显示纯文本文件";
 "Lists .txt files next to Markdown in the Project Navigator. Turn this off to hide them in code folders full of requirements.txt and LICENSE.txt." = "在项目导航器中将 .txt 文件与 Markdown 文件一同列出。关闭此项可在充满 requirements.txt 和 LICENSE.txt 的代码文件夹中隐藏它们。";
+"Monospaced font for plain text" = "纯文本使用等宽字体";
+"A .txt file shown as plain text uses a fixed-width font, so ASCII tables and diagrams line up. Turn this off to use the document font. Switch a file between plain text and Markdown with View → Render as Markdown." = "以纯文本显示的 .txt 文件使用等宽字体，让 ASCII 表格和图示保持对齐。关闭此项将改用文稿字体。可通过“显示 → 按 Markdown 渲染”在纯文本与 Markdown 之间切换文件。";
+"No outline for plain text" = "纯文本没有大纲";
+"Plain Text Document" = "纯文本文稿";
+"Plain text has no frontmatter" = "纯文本没有前置元数据";
 "Convert this file to UTF-8?" = "要将此文件转换为 UTF-8 吗？";
 "%1$@ is encoded as %2$@. Markdown Preview saves files as UTF-8, which other apps that expect the original encoding may display differently." = "%1$@ 的编码为 %2$@。Markdown Preview 以 UTF-8 保存文件，依赖原编码的其他应用可能会以不同方式显示它。";
 "Convert to UTF-8" = "转换为 UTF-8";

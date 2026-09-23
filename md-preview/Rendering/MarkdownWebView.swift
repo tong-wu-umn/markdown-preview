@@ -242,6 +242,10 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
     private var didMagnifyDuringCurrentGesture = false
     private var isPointerOverMermaidFigure = false
     private var currentMarkdown: String?
+    /// How `currentMarkdown` was rendered; replayed by reloads and used by
+    /// HTML export so it writes the same view the reader sees.
+    private(set) var currentRenderMode: MarkdownHTML.RenderMode = .markdown
+    private(set) var currentPlainTextFont: MarkdownHTML.PlainTextFont = .monospaced
     private weak var webScrollView: NSScrollView?
     nonisolated(unsafe) private var scrollBoundsObserver: NSObjectProtocol?
 
@@ -381,8 +385,13 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
             ?? MarkdownAssetResolution.rootBaseHref
     }
 
-    func display(markdown: String, assetBaseURL: URL? = nil) {
+    func display(markdown: String,
+                 assetBaseURL: URL? = nil,
+                 renderMode: MarkdownHTML.RenderMode = .markdown,
+                 plainTextFont: MarkdownHTML.PlainTextFont = .monospaced) {
         currentMarkdown = markdown
+        currentRenderMode = renderMode
+        currentPlainTextFont = plainTextFont
         isPointerOverMermaidFigure = false
         assetScheme.setBaseURL(assetBaseURL)
         currentAssetBase = assetBaseURL
@@ -396,7 +405,9 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
                                             markdown: markdown,
                                             assetBaseHref: baseHref,
                                             contentWidth: contentWidth,
-                                            themeOverrides: themeOverrides)
+                                            themeOverrides: themeOverrides,
+                                            renderMode: renderMode,
+                                            plainTextFont: plainTextFont)
             #if DEBUG
             let renderFinishedAt = DispatchTime.now().uptimeNanoseconds
             await self?.applyDisplayDebug(
@@ -418,7 +429,9 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
                                                 assetBaseHref: String,
                                                 contentWidth: MarkdownHTML.ContentWidth,
                                                 themeOverrides: MarkdownHTML.ThemeOverrides? = nil,
-                                                warmup: Bool = false) -> MarkdownHTML.RenderedHTML {
+                                                warmup: Bool = false,
+                                                renderMode: MarkdownHTML.RenderMode = .markdown,
+                                                plainTextFont: MarkdownHTML.PlainTextFont = .monospaced) -> MarkdownHTML.RenderedHTML {
         let t0 = DispatchTime.now()
         let rendered = MarkdownHTML.render(markdown: markdown,
                                            allowsScroll: true,
@@ -426,7 +439,9 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
                                            vendorLoading: .lazy,
                                            contentWidth: contentWidth,
                                            themeOverrides: themeOverrides,
-                                           warmup: warmup)
+                                           warmup: warmup,
+                                           renderMode: renderMode,
+                                           plainTextFont: plainTextFont)
         let elapsedMs = Int(
             (Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds)
              / 1_000_000).rounded()
@@ -510,7 +525,10 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
 
     func reloadPreview() {
         guard let currentMarkdown else { return }
-        display(markdown: currentMarkdown, assetBaseURL: currentAssetBase)
+        display(markdown: currentMarkdown,
+                assetBaseURL: currentAssetBase,
+                renderMode: currentRenderMode,
+                plainTextFont: currentPlainTextFont)
     }
 
     /// Full reload (no fast-path) so render-time settings — appearance,
@@ -520,6 +538,10 @@ final class MarkdownWebView: NSView, WKNavigationDelegate {
     func reloadPreviewForSettingChange() {
         loadedFingerprint = nil
         isPageReady = false
+        #if !QUICK_LOOK_EXTENSION
+        // The plain-text face is one of the render-time settings.
+        currentPlainTextFont = PlainTextFontSetting.current
+        #endif
         reloadPreview()
     }
 

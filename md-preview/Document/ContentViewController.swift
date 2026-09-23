@@ -208,7 +208,9 @@ final class ContentViewController: NSViewController {
     func display(
         markdown: String,
         sourceURL: URL?,
-        assetBaseURL: URL? = nil
+        assetBaseURL: URL? = nil,
+        renderMode: MarkdownHTML.RenderMode = .markdown,
+        plainTextFont: MarkdownHTML.PlainTextFont = .monospaced
     ) {
         exportSource = ExportSource(
             markdown: markdown,
@@ -225,7 +227,10 @@ final class ContentViewController: NSViewController {
             scheduleNavigationTargetAttempt()
         }
         resetScrollspy()
-        webView.display(markdown: markdown, assetBaseURL: assetBaseURL)
+        webView.display(markdown: markdown,
+                        assetBaseURL: assetBaseURL,
+                        renderMode: renderMode,
+                        plainTextFont: plainTextFont)
         scheduleHeadingOffsetsRefresh()
     }
 

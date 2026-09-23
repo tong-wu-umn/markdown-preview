@@ -109,6 +109,7 @@
 				"Rendering/MarkdownHTML+KaTeX.swift",
 				"Rendering/MarkdownHTML+Math.swift",
 				"Rendering/MarkdownHTML+Mermaid.swift",
+				"Rendering/MarkdownHTML+PlainText.swift",
 				"Rendering/MarkdownHTML+RTL.swift",
 				"Rendering/MarkdownHTML+Stylesheet.swift",
 				"Rendering/MarkdownHTML+Utils.swift",

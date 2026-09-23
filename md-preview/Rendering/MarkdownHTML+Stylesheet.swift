@@ -16,7 +16,7 @@ nonisolated extension MarkdownHTML {
     /// The class rules live here, not with the in-page highlighter, because a
     /// page whose code arrived highlighted from the renderer never loads that
     /// runtime, yet its spans still need their colors.
-    static let stylesheet = baseStylesheet + "\n" + highlightThemeCSS
+    static let stylesheet = baseStylesheet + "\n" + plainTextCSS + "\n" + highlightThemeCSS
 
     private static let baseStylesheet = """
     :root {

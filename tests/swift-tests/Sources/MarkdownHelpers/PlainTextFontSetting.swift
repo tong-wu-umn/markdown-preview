@@ -1,0 +1,1 @@
+../../../../md-preview/Preferences/PlainTextFontSetting.swift

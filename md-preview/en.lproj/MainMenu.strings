@@ -136,6 +136,8 @@
 	<string>Zoom In</string>
 	<key>mdp-zo-itm.title</key>
 	<string>Zoom Out</string>
+	<key>mdp-ram-itm.title</key>
+	<string>Render as Markdown</string>
 	<key>mdp-zr-itm.title</key>
 	<string>Actual Size</string>
 	<key>oas-Oc-fiZ.title</key>

@@ -1,17 +1,15 @@
-# Plain-text sample
+# Plain-text sample (renders as Markdown)
 
-This file has a `.txt` extension. Markdown Preview renders `.txt` files as
-Markdown, so the heading above, the list below, and the link all render.
+This file has a `.txt` extension, but it contains Markdown headings and a
+link, so Markdown Preview renders it as Markdown. Compare it with
+`plain-prose.txt`, which has no Markdown syntax and renders as plain text.
 
 ## Things to check
 
 - The heading and this list render as Markdown, not as raw text.
 - *Italic*, **bold**, and `code` spans render too.
-- The link opens in the app: [full feature sample](full.md)
+- The link opens in the app: [plain prose sample](plain-prose.txt)
+- *View → Render as Markdown* is checked. Uncheck it to see this file as
+  plain text; the choice is remembered for this file.
 - This file shows up in the Project Navigator unless *Settings → General →
   Show plain-text files in navigator* is off.
-
-## Hard-wrapped prose
-
-Lines in this paragraph are hard-wrapped at about 72 columns, as plain-text
-notes often are. Rendered as Markdown, they reflow into a single paragraph.

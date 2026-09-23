@@ -50,36 +50,42 @@ final class EditorViewController: NSViewController, WKNavigationDelegate {
         view = webView
     }
 
-    func load(markdown: String, assetBaseURL: URL? = nil) {
+    /// `plainText` loads the editor without Markdown decorations (headings,
+    /// hidden syntax, tables, Mermaid) for a `.txt` rendered as plain text.
+    func load(markdown: String, assetBaseURL: URL? = nil, plainText: Bool = false) {
         hasChanges = false
         currentAssetBaseURL = assetBaseURL?.standardizedFileURL
         assetScheme.setBaseURL(currentAssetBaseURL)
-        let needsMermaid = Self.containsMermaidFence(in: markdown)
+        let needsMermaid = !plainText && Self.containsMermaidFence(in: markdown)
         if hasLoadedEditorPage, pageSupportsMermaid || !needsMermaid {
             let baseHref = currentAssetBaseURL.map(MarkdownAssetResolution.baseHref(forFolder:)) ?? ""
-            let script = "window.__mdLoadEditor && window.__mdLoadEditor(\(EditorHTML.jsStringLiteral(markdown)), \(EditorHTML.jsStringLiteral(baseHref)))"
+            let script = "window.__mdLoadEditor && window.__mdLoadEditor(\(EditorHTML.jsStringLiteral(markdown)), \(EditorHTML.jsStringLiteral(baseHref)), \(EditorHTML.loadOptionsLiteral(plainText: plainText, plainTextFont: PlainTextFontSetting.current)))"
             webView.evaluateJavaScript(script) { [weak self] _, error in
                 guard let self, error != nil else { return }
                 self.loadEditorPage(markdown: markdown,
                                     includesMermaid: needsMermaid,
-                                    assetBaseURL: self.currentAssetBaseURL)
+                                    assetBaseURL: self.currentAssetBaseURL,
+                                    plainText: plainText)
             }
             return
         }
         loadEditorPage(markdown: markdown,
                        includesMermaid: needsMermaid,
-                       assetBaseURL: currentAssetBaseURL)
+                       assetBaseURL: currentAssetBaseURL,
+                       plainText: plainText)
     }
 
     private func loadEditorPage(markdown: String,
                                 includesMermaid: Bool,
-                                assetBaseURL: URL?) {
+                                assetBaseURL: URL?,
+                                plainText: Bool) {
         hasLoadedEditorPage = false
         pageSupportsMermaid = includesMermaid
         webView.loadHTMLString(
             Self.editorHTML(markdown: markdown,
                             includesMermaid: includesMermaid,
-                            assetBaseURL: assetBaseURL),
+                            assetBaseURL: assetBaseURL,
+                            plainText: plainText),
             baseURL: nil
         )
     }
@@ -430,7 +436,8 @@ final class EditorViewController: NSViewController, WKNavigationDelegate {
 
     private static func editorHTML(markdown: String,
                                    includesMermaid: Bool,
-                                   assetBaseURL: URL?) -> String {
+                                   assetBaseURL: URL?,
+                                   plainText: Bool) -> String {
         // Baked into the base stylesheet, not only the override element:
         // WebKit derives the obscured-inset fill from the base stylesheet's
         // html/body background, so a theme color only present in the later
@@ -461,7 +468,9 @@ final class EditorViewController: NSViewController, WKNavigationDelegate {
                 darkPageBackground: darkPageBackground,
                 themeOverrideCSS: colors.editorOverrideCSS,
                 usesPageScrolling: usesPageScrolling,
-                bridgeName: EditorBridge.name
+                bridgeName: EditorBridge.name,
+                plainText: plainText,
+                plainTextFont: PlainTextFontSetting.current
             )
         )
     }

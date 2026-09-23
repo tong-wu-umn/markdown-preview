@@ -97,8 +97,21 @@ Plain text: `.txt`, `.text` — declared by extension at rank `Alternate`
 (`public.plain-text` itself also covers source code, `.log`, and `.csv`, which
 the app deliberately doesn't claim).
 
-- A `.txt` renders as Markdown, and its links, navigator row, and Open panel
-  entry work like a `.md` file's.
+- A `.txt` renders either as Markdown or as plain text. Plain text keeps the
+  file exactly as written: hard-wrapped lines, `#` comments, literal `*`
+  bullets, and ASCII tables and art. It uses a monospaced font by default
+  (*Settings → General → Monospaced font for plain text*), and a long line
+  wraps rather than scrolling sideways.
+- The mode is detected per file. Frontmatter, a `# Heading`, a fenced code
+  block, a `[link](url)` or image, or a table means Markdown; anything else is
+  plain text. Only the first 64 KB are checked. *View → Render as Markdown*
+  switches a `.txt` between the two, and the choice is remembered for that file
+  across reloads and relaunches.
+- In plain text the outline is empty, the inspector drops Markdown-only counts
+  and frontmatter, and edit mode opens a plain editor with no formatting bar.
+  HTML/PDF export, Find, and Open in LLM use the plain text too.
+- Links to a `.txt`, its navigator row, and its Open panel entry work like a
+  `.md` file's.
 - The app appears under Finder's *Open With* for `.txt` but never makes itself
   the default `.txt` app, and the first-launch default-handler offer only covers
   `.md`.

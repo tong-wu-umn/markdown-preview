@@ -1,0 +1,1 @@
+../../../../md-preview/Helpers/PlainTextHeuristic.swift

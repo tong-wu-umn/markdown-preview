@@ -245,6 +245,8 @@ extension DocumentWindowController {
                      fileName: fileURL?.lastPathComponent
                          ?? NSLocalizedString("Untitled", comment: "Untitled document name"),
                      url: fileURL,
-                     assetBaseURL: fileURL?.deletingLastPathComponent())
+                     assetBaseURL: fileURL?.deletingLastPathComponent(),
+                     renderMode: renderMode(for: text, fileURL: fileURL),
+                     plainTextFont: PlainTextFontSetting.current)
     }
 }

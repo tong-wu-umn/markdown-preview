@@ -113,6 +113,16 @@ final class SettingsModel {
         }
     }
 
+    /// Monospaced (default) or the document font for `.txt` files shown as
+    /// plain text. Open plain-text previews re-render on change.
+    var usesMonospacedPlainText: Bool {
+        didSet {
+            guard !isRestoringExternalValues,
+                  usesMonospacedPlainText != oldValue else { return }
+            appDelegate?.applyPlainTextFontSetting(usesMonospacedPlainText ? .monospaced : .document)
+        }
+    }
+
     var sendsCrashReports: Bool {
         didSet {
             guard !isRestoringExternalValues, sendsCrashReports != oldValue else { return }
@@ -276,6 +286,7 @@ final class SettingsModel {
         opensMarkdownLinksInNewWindows = UserDefaults.standard.bool(forKey: "MarkdownPreview.opensMarkdownLinksInNewWindows")
         restoresLastFoldersAtLaunch = SessionRestoreSetting.isEnabled
         showsPlainTextFilesInNavigator = NavigatorPlainTextSetting.isEnabled
+        usesMonospacedPlainText = PlainTextFontSetting.current == .monospaced
         sendsCrashReports = CrashReporter.isEnabled
         themeColors = ThemeColorsSetting.current
         sharesAnonymousUsageAnalytics = UsageAnalyticsReporter.isEnabled
@@ -333,6 +344,7 @@ final class SettingsModel {
         opensMarkdownLinksInNewWindows = UserDefaults.standard.bool(forKey: "MarkdownPreview.opensMarkdownLinksInNewWindows")
         restoresLastFoldersAtLaunch = SessionRestoreSetting.isEnabled
         showsPlainTextFilesInNavigator = NavigatorPlainTextSetting.isEnabled
+        usesMonospacedPlainText = PlainTextFontSetting.current == .monospaced
         sendsCrashReports = CrashReporter.isEnabled
         themeColors = ThemeColorsSetting.current
         sharesAnonymousUsageAnalytics = UsageAnalyticsReporter.isEnabled

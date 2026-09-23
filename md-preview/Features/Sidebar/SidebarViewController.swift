@@ -27,6 +27,10 @@ final class SidebarViewController: NSViewController {
     private var titleItem: TitleItem?
     private var lastRenderedMarkdown: String?
     private var lastRenderedFileName: String?
+    private var lastRenderMode: MarkdownHTML.RenderMode = .markdown
+    /// Shown over the outline when the document renders as plain text,
+    /// which has no headings to list.
+    private var plainTextOutlineLabel: NSTextField!
     /// The window's mounted navigator roots, explicit and implicit (D1: one
     /// set per window/tab).
     private var rootSet = NavigatorRootSet()
@@ -81,6 +85,17 @@ final class SidebarViewController: NSViewController {
 
         scrollView.documentView = outlineView
 
+        plainTextOutlineLabel = NSTextField(wrappingLabelWithString: NSLocalizedString(
+            "No outline for plain text",
+            comment: "Sidebar outline empty state for a document rendered as plain text"
+        ))
+        plainTextOutlineLabel.translatesAutoresizingMaskIntoConstraints = false
+        plainTextOutlineLabel.alignment = .center
+        plainTextOutlineLabel.textColor = .secondaryLabelColor
+        plainTextOutlineLabel.font = .preferredFont(forTextStyle: .callout)
+        plainTextOutlineLabel.isHidden = true
+        contentContainer.addSubview(plainTextOutlineLabel)
+
         projectNavigator = ProjectNavigatorView()
         projectNavigator.translatesAutoresizingMaskIntoConstraints = false
         projectNavigator.onSelectFile = { [weak self] url in
@@ -117,7 +132,11 @@ final class SidebarViewController: NSViewController {
             projectNavigator.topAnchor.constraint(equalTo: contentContainer.topAnchor),
             projectNavigator.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
             projectNavigator.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            projectNavigator.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor)
+            projectNavigator.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+
+            plainTextOutlineLabel.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
+            plainTextOutlineLabel.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 16),
+            plainTextOutlineLabel.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -16)
         ])
 
         view = container
@@ -158,17 +177,31 @@ final class SidebarViewController: NSViewController {
             scrollView.isHidden = true
             projectNavigator.isHidden = false
         }
+        plainTextOutlineLabel.isHidden = currentMode != .outline || lastRenderMode != .plainText
     }
 
-    func display(markdown: String, fileName: String, fileURL: URL?) {
+    func display(markdown: String,
+                 fileName: String,
+                 fileURL: URL?,
+                 renderMode: MarkdownHTML.RenderMode = .markdown) {
         loadViewIfNeeded()
         setOpenFileURL(fileURL)
 
-        guard markdown != lastRenderedMarkdown || fileName != lastRenderedFileName else { return }
+        guard markdown != lastRenderedMarkdown
+                || fileName != lastRenderedFileName
+                || renderMode != lastRenderMode else { return }
         lastRenderedMarkdown = markdown
         lastRenderedFileName = fileName
-        titleItem = fileName.isEmpty ? nil : TitleItem(title: fileName)
-        roots = MarkdownTOC.parse(markdown).map(TOCNode.init)
+        lastRenderMode = renderMode
+        applyMode()
+        if renderMode == .plainText {
+            // Plain text has no headings; the empty state says why.
+            titleItem = nil
+            roots = []
+        } else {
+            titleItem = fileName.isEmpty ? nil : TitleItem(title: fileName)
+            roots = MarkdownTOC.parse(markdown).map(TOCNode.init)
+        }
         outlineView.reloadData()
         for root in roots {
             outlineView.expandItem(root, expandChildren: true)
