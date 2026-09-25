@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- **Project Navigator folders no longer turn empty while files change.** Each refresh of the navigator leaked open folder handles, so frequent edits — an LLM agent writing Markdown files, for example — eventually left the app unable to read any folder, and every top-level folder showed collapsed with no disclosure triangle until relaunch. Folder watchers now release their handles, and a folder that fails to read is retried instead of being remembered as empty.
 - **Plain-text `.txt` files open in Markdown Preview.** They were listed as supported but were never registered, so opening one from Finder's *Open With*, `mdp`, or an `md-preview://` link failed, and links to `.txt` files opened TextEdit. `.txt` and `.text` files now open and render as Markdown. The app appears under *Open With* for them without becoming the default `.txt` app, and Quick Look for `.txt` stays with the system.
 - **Legacy-encoded text files open.** Files in UTF-16 (with a BOM), Windows-1252, or Latin-1 no longer fail with a "corrupt file" error. Saving an edit to such a file asks before converting it to UTF-8.
 - **Opening several folders at once shows them all.** `mdp a b`, `md-preview://` links, and multi-folder open-panel selections previously kept only the last folder; they now mount every folder into one window.

@@ -29,10 +29,16 @@ private final class FileNode {
             return []
         }
         let showsPlainText = NavigatorPlainTextSetting.isEnabled
-        let entries = (try? FileManager.default.contentsOfDirectory(
+        guard let entries = try? FileManager.default.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles])) ?? []
+            options: [.skipsHiddenFiles]) else {
+            // A failed read (folder mid-move, transient I/O or descriptor
+            // pressure) is not an empty folder: don't cache it, so the next
+            // query or refresh reads the directory again instead of pinning
+            // the row as a leaf.
+            return []
+        }
         let nodes: [FileNode] = entries.compactMap { entry in
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             if isDir { return FileNode(url: entry, isDirectory: true) }
@@ -716,49 +722,5 @@ extension ProjectNavigatorView: NSOutlineViewDelegate {
     func outlineViewItemDidExpand(_ notification: Notification) {
         // Newly-loaded subtree needs its own watcher.
         syncWatchers()
-    }
-}
-
-private final class DirectoryWatcher {
-    private let onChange: () -> Void
-    private var source: DispatchSourceFileSystemObject?
-    private var fileDescriptor: Int32 = -1
-    private var debounce: DispatchWorkItem?
-
-    init(url: URL, onChange: @escaping () -> Void) {
-        self.onChange = onChange
-        let fd = Darwin.open(url.path, O_EVTONLY)
-        guard fd >= 0 else { return }
-        fileDescriptor = fd
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .extend, .delete, .rename, .revoke],
-            queue: .main
-        )
-        source.setEventHandler { [weak self] in self?.scheduleChange() }
-        source.setCancelHandler { [weak self] in
-            guard let self else { return }
-            if self.fileDescriptor >= 0 {
-                Darwin.close(self.fileDescriptor)
-                self.fileDescriptor = -1
-            }
-        }
-        self.source = source
-        source.resume()
-    }
-
-    /// FS events arrive in bursts (Finder rewrites + xattr updates). Coalesce.
-    private func scheduleChange() {
-        debounce?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.onChange() }
-        debounce = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
-    }
-
-    func cancel() {
-        debounce?.cancel()
-        source?.cancel()
-        source = nil
     }
 }
