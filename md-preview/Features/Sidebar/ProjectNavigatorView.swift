@@ -216,6 +216,12 @@ final class ProjectNavigatorView: NSView {
             return
         }
 
+        // A newly mounted root may now contain the open document, so the
+        // next `setCurrentFile` must reveal it even if it's the same file.
+        if standardized.contains(where: { !oldURLs.contains($0) }) {
+            currentFileURL = nil
+        }
+
         // Incremental only while the surviving roots keep their order
         // (add-at-end / remove); otherwise a full reload preserving expansion.
         let survivingOld = oldURLs.filter { standardized.contains($0) }
@@ -223,7 +229,10 @@ final class ProjectNavigatorView: NSView {
         guard survivingOld == survivingNew else {
             let expanded = collectExpandedURLs()
             outlineView.reloadData()
-            for node in newNodes {
+            for node in newNodes
+            where !oldURLs.contains(node.url) || expanded.contains(node.url) {
+                // New roots open expanded; surviving roots keep whatever
+                // state the user left them in.
                 outlineView.expandItem(node)
                 reExpand(node, expanded: expanded)
             }
@@ -292,30 +301,57 @@ final class ProjectNavigatorView: NSView {
     }
 
     @objc private func navigatorFilterDidChange() {
+        let selectedURL = currentlySelectedURL()
         refreshTree()
-        // Re-select the open document; a now-hidden `.txt` simply ends up
+        // Re-select without revealing; a now-hidden `.txt` simply ends up
         // with no selected row.
-        if let currentFileURL, selectPath(to: currentFileURL) { return }
-        outlineView.deselectAll(nil)
+        restoreSelection(selectedURL)
     }
 
+    /// A watched folder changed on disk (including an external editor's
+    /// atomic save of the open file). Refresh the listing but never expand
+    /// anything the user collapsed.
     private func handleFolderChange() {
         let selectedURL = currentlySelectedURL()
         refreshTree()
-        if let selectedURL { setCurrentFile(selectedURL) }
+        restoreSelection(selectedURL)
     }
 
-    /// Reloads the outline from disk while preserving expansion state.
-    /// Selection is left to the caller.
+    private func restoreSelection(_ url: URL?) {
+        if let url, selectVisibleRow(for: url) { return }
+        outlineView.deselectAll(nil)
+    }
+
+    /// Reloads the outline from disk while preserving expansion state —
+    /// collapsed roots and folders stay collapsed. Selection is left to the
+    /// caller.
     private func refreshTree() {
         let expandedURLs = collectExpandedURLs()
         for node in rootNodes { invalidateCaches(node) }
         outlineView.reloadData()
-        for node in rootNodes {
+        for node in rootNodes where expandedURLs.contains(node.url.standardizedFileURL) {
             outlineView.expandItem(node)
             reExpand(node, expanded: expandedURLs)
         }
         syncWatchers()
+    }
+
+    /// Selects the row for `url` only if it's currently visible, without
+    /// expanding any ancestor or scrolling. Returns false when the row is
+    /// hidden inside a collapsed folder (or gone).
+    @discardableResult
+    private func selectVisibleRow(for url: URL) -> Bool {
+        let target = url.standardizedFileURL
+        for row in 0..<outlineView.numberOfRows {
+            guard let node = outlineView.item(atRow: row) as? FileNode,
+                  node.url.standardizedFileURL == target else { continue }
+            if outlineView.selectedRow != row {
+                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            }
+            refreshRowTextColors()
+            return true
+        }
+        return false
     }
 
     private func invalidateCaches(_ node: FileNode) {
@@ -360,9 +396,19 @@ final class ProjectNavigatorView: NSView {
     }
 
     func setCurrentFile(_ url: URL?) {
-        currentFileURL = url?.standardizedFileURL
-        guard let target = currentFileURL, !rootNodes.isEmpty else {
+        let target = url?.standardizedFileURL
+        let isSameFile = target != nil && target == currentFileURL
+        currentFileURL = target
+        guard let target, !rootNodes.isEmpty else {
             outlineView.deselectAll(nil)
+            return
+        }
+        if isSameFile {
+            // Re-assertion of the already-open file (e.g. a reload after an
+            // external edit). Only reveal on actual navigation; here, keep
+            // the user's expand/collapse state and just re-highlight the row
+            // if it's visible.
+            if !selectVisibleRow(for: target) { outlineView.deselectAll(nil) }
             return
         }
         if selectPath(to: target) { return }
