@@ -80,6 +80,14 @@ final class ProjectNavigatorView: NSView {
     // One watcher per loaded directory; kept in sync with which FileNodes
     // currently have a populated children cache.
     private var watchers: [URL: DirectoryWatcher] = [:]
+    /// Expanded-folder paths restored from the last session, waiting for
+    /// the tree to be built (the navigator loads lazily in `.files` mode).
+    private var pendingExpandedPaths: Set<String>?
+    /// Every folder the user left expanded, even under a collapsed parent.
+    private var expandedPaths: Set<String> = []
+    /// The folder whose collapse is in progress (see `outlineViewItemWillCollapse`).
+    private var collapseOrigin: FileNode?
+    private var collapseIncludesDescendants = false
     /// Shown in `.files` mode when no folder is mounted (D7 / Phase 2).
     private let emptyStateView = NSView()
 
@@ -227,15 +235,15 @@ final class ProjectNavigatorView: NSView {
         let survivingOld = oldURLs.filter { standardized.contains($0) }
         let survivingNew = standardized.filter { oldURLs.contains($0) }
         guard survivingOld == survivingNew else {
-            let expanded = collectExpandedURLs()
+            var expanded = collectExpandedPaths()
             outlineView.reloadData()
-            for node in newNodes
-            where !oldURLs.contains(node.url) || expanded.contains(node.url) {
-                // New roots open expanded; surviving roots keep whatever
-                // state the user left them in.
-                outlineView.expandItem(node)
-                reExpand(node, expanded: expanded)
+            // New roots open expanded; surviving roots keep whatever state
+            // the user left them in.
+            for node in newNodes where !oldURLs.contains(node.url) {
+                expanded.insert(node.url.standardizedFileURL.path)
             }
+            for node in newNodes { applyExpansion(node, paths: expanded) }
+            applyPendingExpansion()
             syncWatchers()
             return
         }
@@ -255,7 +263,57 @@ final class ProjectNavigatorView: NSView {
         for node in newNodes where !oldURLs.contains(node.url) {
             outlineView.expandItem(node)
         }
+        applyPendingExpansion()
         syncWatchers()
+    }
+
+    // MARK: - Expansion persistence
+
+    /// Paths of every expanded folder (roots included) for saving at quit.
+    /// `nil` when the tree was never built and nothing is pending, i.e. the
+    /// state is unknown rather than "all collapsed".
+    var expandedFolderPaths: [String]? {
+        guard !rootNodes.isEmpty else { return pendingExpandedPaths.map { Array($0) } }
+        return Array(collectExpandedPaths())
+    }
+
+    /// Re-applies a saved expansion state: exactly the listed folders are
+    /// expanded, everything else collapsed. Applied now if the tree is
+    /// built, otherwise when roots are first mounted.
+    func restoreExpandedFolders(_ paths: Set<String>) {
+        pendingExpandedPaths = paths
+        if !rootNodes.isEmpty { applyPendingExpansion() }
+    }
+
+    private func applyPendingExpansion() {
+        guard let paths = pendingExpandedPaths else { return }
+        pendingExpandedPaths = nil
+        for root in rootNodes { applyExpansion(root, paths: paths) }
+        syncWatchers()
+    }
+
+    /// Makes exactly the folders in `paths` expanded within `node`'s
+    /// subtree. A folder expanded inside a collapsed parent keeps that state
+    /// (it shows expanded when the parent is reopened): the parent is
+    /// expanded to reach it, then collapsed again without its children.
+    private func applyExpansion(_ node: FileNode, paths: Set<String>) {
+        guard node.isDirectory else { return }
+        let path = node.url.standardizedFileURL.path
+        let isExpanded = paths.contains(path)
+        let prefix = path.hasSuffix("/") ? path : path + "/"
+        guard isExpanded || paths.contains(where: { $0.hasPrefix(prefix) }) else {
+            if outlineView.isItemExpanded(node) {
+                outlineView.collapseItem(node)
+            }
+            return
+        }
+        outlineView.expandItem(node)
+        for child in node.children() where child.isDirectory {
+            applyExpansion(child, paths: paths)
+        }
+        if !isExpanded {
+            outlineView.collapseItem(node)
+        }
     }
 
     /// Refreshes the visible text of root rows without touching the tree —
@@ -326,13 +384,10 @@ final class ProjectNavigatorView: NSView {
     /// collapsed roots and folders stay collapsed. Selection is left to the
     /// caller.
     private func refreshTree() {
-        let expandedURLs = collectExpandedURLs()
+        let expandedPaths = collectExpandedPaths()
         for node in rootNodes { invalidateCaches(node) }
         outlineView.reloadData()
-        for node in rootNodes where expandedURLs.contains(node.url.standardizedFileURL) {
-            outlineView.expandItem(node)
-            reExpand(node, expanded: expandedURLs)
-        }
+        for node in rootNodes { applyExpansion(node, paths: expandedPaths) }
         syncWatchers()
     }
 
@@ -362,20 +417,15 @@ final class ProjectNavigatorView: NSView {
         node.invalidateCache()
     }
 
-    private func collectExpandedURLs() -> Set<URL> {
-        var result: Set<URL> = []
-        func walk(_ item: Any?) {
-            let count = outlineView.numberOfChildren(ofItem: item)
-            for i in 0..<count {
-                let child = outlineView.child(i, ofItem: item)
-                if let node = child as? FileNode, outlineView.isItemExpanded(node) {
-                    result.insert(node.url.standardizedFileURL)
-                    walk(child)
-                }
-            }
+    /// Paths of every expanded folder under a mounted root, including ones
+    /// expanded inside a collapsed parent. NSOutlineView keeps those open
+    /// but reports them as collapsed, so this reads `expandedPaths`, which
+    /// the expand/collapse notifications keep current.
+    private func collectExpandedPaths() -> Set<String> {
+        let roots = rootNodes.map { $0.url.standardizedFileURL.path }
+        return expandedPaths.filter { path in
+            roots.contains { path == $0 || path.hasPrefix($0.hasSuffix("/") ? $0 : $0 + "/") }
         }
-        walk(nil)
-        return result
     }
 
     private func currentlySelectedURL() -> URL? {
@@ -383,16 +433,6 @@ final class ProjectNavigatorView: NSView {
         guard row >= 0,
               let node = outlineView.item(atRow: row) as? FileNode else { return nil }
         return node.url.standardizedFileURL
-    }
-
-    private func reExpand(_ node: FileNode, expanded: Set<URL>) {
-        guard node.isDirectory else { return }
-        for child in node.children() where child.isDirectory {
-            if expanded.contains(child.url.standardizedFileURL) {
-                outlineView.expandItem(child)
-                reExpand(child, expanded: expanded)
-            }
-        }
     }
 
     func setCurrentFile(_ url: URL?) {
@@ -470,7 +510,9 @@ final class ProjectNavigatorView: NSView {
             // Disclosure buttons handle their own clicks in AppKit; this
             // action covers the folder's name, icon, and remaining row area.
             if outlineView.isItemExpanded(node) {
-                outlineView.collapseItem(node)
+                // Option collapses the subtree too, like the disclosure
+                // triangle, so the remembered expansion matches AppKit's.
+                outlineView.collapseItem(node, collapseChildren: isOptionClick)
             } else {
                 outlineView.expandItem(node)
             }
@@ -766,7 +808,41 @@ extension ProjectNavigatorView: NSOutlineViewDelegate {
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
+        if let node = notification.userInfo?["NSObject"] as? FileNode {
+            expandedPaths.insert(node.url.standardizedFileURL.path)
+        }
         // Newly-loaded subtree needs its own watcher.
         syncWatchers()
+    }
+
+    /// Collapsing a folder also posts will/did-collapse for each expanded
+    /// descendant, but AppKit keeps those descendants open for when the
+    /// folder is reopened. Only the folder that started the collapse (and,
+    /// for an Option-click "collapse all", its descendants) really closes.
+    func outlineViewItemWillCollapse(_ notification: Notification) {
+        guard collapseOrigin == nil,
+              let node = notification.userInfo?["NSObject"] as? FileNode else { return }
+        collapseOrigin = node
+        collapseIncludesDescendants = isOptionClick
+    }
+
+    /// True only while handling an Option-click, so a programmatic collapse
+    /// (e.g. during a folder refresh) never reads a stale modifier state.
+    fileprivate var isOptionClick: Bool {
+        guard let event = NSApp.currentEvent,
+              event.type == .leftMouseDown || event.type == .leftMouseUp else { return false }
+        return event.modifierFlags.contains(.option)
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        guard let node = notification.userInfo?["NSObject"] as? FileNode else { return }
+        let isOrigin = node === collapseOrigin
+        if isOrigin || collapseIncludesDescendants || collapseOrigin == nil {
+            expandedPaths.remove(node.url.standardizedFileURL.path)
+        }
+        if isOrigin {
+            collapseOrigin = nil
+            collapseIncludesDescendants = false
+        }
     }
 }

@@ -3,8 +3,9 @@
 //  md-preview
 //
 //  Remembers the folders mounted in the navigator so a relaunch can pick up
-//  the last working folders instead of showing the Open panel. Folders only
-//  (not the open file), gated behind a preference that defaults on.
+//  the last working folders instead of showing the Open panel, with the same
+//  folders expanded. Folders only (not the open file), gated behind a
+//  preference that defaults on.
 //
 //  The app holds a read-only exception for the whole filesystem (see
 //  md-preview.entitlements — the navigator enumerates sibling folders that
@@ -19,6 +20,7 @@ import Foundation
 enum SessionRestoreSetting {
     static let enabledDefaultsKey = "MarkdownPreview.restoresLastFoldersAtLaunch"
     static let foldersDefaultsKey = "MarkdownPreview.lastSessionFolderPaths"
+    static let expandedFoldersDefaultsKey = "MarkdownPreview.lastSessionExpandedFolderPaths"
 
     // MARK: - Preference toggle (defaults ON)
 
@@ -71,6 +73,29 @@ enum SessionRestoreSetting {
                   isDirectory.boolValue else { return nil }
             return URL(fileURLWithPath: path, isDirectory: true)
         }
+    }
+
+    // MARK: - Saved navigator expansion
+
+    /// Records which navigator folders (roots included) were expanded. `nil`
+    /// means "unknown" (e.g. the navigator was never shown) and clears the
+    /// key so a relaunch falls back to the default (roots expanded). An empty
+    /// array is kept: it means everything was collapsed.
+    static func saveExpandedFolders(_ urls: [URL]?, to defaults: UserDefaults? = .standard) {
+        guard let urls else {
+            defaults?.removeObject(forKey: expandedFoldersDefaultsKey)
+            return
+        }
+        defaults?.set(normalizedPaths(urls), forKey: expandedFoldersDefaultsKey)
+    }
+
+    /// The expanded folder paths saved at last quit, or `nil` when none were
+    /// recorded (use the default expansion).
+    static func savedExpandedFolderPaths(from defaults: UserDefaults? = .standard) -> Set<String>? {
+        guard let paths = defaults?.array(forKey: expandedFoldersDefaultsKey) as? [String] else {
+            return nil
+        }
+        return Set(paths)
     }
 
     /// Standardized, de-duplicated folder paths in order.

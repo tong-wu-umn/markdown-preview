@@ -146,6 +146,14 @@ final class MainSplitViewController: NSSplitViewController {
     /// document search index).
     var mountedFolderURLs: [URL] { sidebarViewController?.mountedFolderURLs ?? [] }
 
+    var navigatorExpandedFolderPaths: [String]? {
+        sidebarViewController?.navigatorExpandedFolderPaths
+    }
+
+    func restoreNavigatorExpandedFolders(_ paths: Set<String>) {
+        sidebarViewController?.restoreNavigatorExpandedFolders(paths)
+    }
+
     func clearContent() {
         contentViewController?.clearContent()
     }

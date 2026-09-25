@@ -55,6 +55,41 @@ final class SessionRestoreSettingTests: XCTestCase {
                        [existingDir.standardizedFileURL.path])
     }
 
+    func testExpandedFoldersUnknownWhenNeverSaved() throws {
+        let defaults = try makeDefaults()
+        XCTAssertNil(SessionRestoreSetting.savedExpandedFolderPaths(from: defaults))
+    }
+
+    func testExpandedFoldersRoundTripNormalized() throws {
+        let defaults = try makeDefaults()
+
+        SessionRestoreSetting.saveExpandedFolders(
+            [URL(fileURLWithPath: "/tmp/one"),
+             URL(fileURLWithPath: "/tmp/./one/sub/"),
+             URL(fileURLWithPath: "/tmp/one")],
+            to: defaults)
+
+        XCTAssertEqual(SessionRestoreSetting.savedExpandedFolderPaths(from: defaults),
+                       ["/tmp/one", "/tmp/one/sub"])
+    }
+
+    func testAllCollapsedIsRememberedNotTreatedAsUnknown() throws {
+        let defaults = try makeDefaults()
+
+        SessionRestoreSetting.saveExpandedFolders([], to: defaults)
+
+        XCTAssertEqual(SessionRestoreSetting.savedExpandedFolderPaths(from: defaults), [])
+    }
+
+    func testSavingUnknownExpansionClearsIt() throws {
+        let defaults = try makeDefaults()
+
+        SessionRestoreSetting.saveExpandedFolders([URL(fileURLWithPath: "/tmp/one")], to: defaults)
+        SessionRestoreSetting.saveExpandedFolders(nil, to: defaults)
+
+        XCTAssertNil(SessionRestoreSetting.savedExpandedFolderPaths(from: defaults))
+    }
+
     private func makeDefaults() throws -> UserDefaults {
         let suiteName = "SessionRestoreSettingTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

@@ -137,30 +137,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard SessionRestoreSetting.isEnabled else { return false }
         let folders = SessionRestoreSetting.restorableFolders()
         guard !folders.isEmpty else { return false }
-        openFolders(folders)
+        let controller = openFolders(folders)
+        if let expanded = SessionRestoreSetting.savedExpandedFolderPaths() {
+            controller?.mainSplit?.restoreNavigatorExpandedFolders(expanded)
+        }
         return true
     }
 
-    /// The folders to remember for next launch: the active window's mounted
-    /// roots, falling back to the first other window that still has folders so
-    /// a folderless front window doesn't erase a project open behind it.
-    private func sessionFoldersToPersist() -> [URL] {
-        if let active = activeDocumentWindowController,
-           let folders = active.mainSplit?.mountedFolderURLs, !folders.isEmpty {
-            return folders
+    /// The window whose folders to remember for next launch: the active
+    /// window if it has mounted roots, falling back to the first other window
+    /// that still has folders so a folderless front window doesn't erase a
+    /// project open behind it.
+    private func sessionWindowToPersist() -> MainSplitViewController? {
+        if let split = activeDocumentWindowController?.mainSplit,
+           !split.mountedFolderURLs.isEmpty {
+            return split
         }
         for document in NSDocumentController.shared.documents {
             for case let controller as DocumentWindowController in document.windowControllers {
-                if let folders = controller.mainSplit?.mountedFolderURLs, !folders.isEmpty {
-                    return folders
+                if let split = controller.mainSplit, !split.mountedFolderURLs.isEmpty {
+                    return split
                 }
             }
         }
-        return []
+        return nil
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        SessionRestoreSetting.saveFolders(sessionFoldersToPersist())
+        let split = sessionWindowToPersist()
+        SessionRestoreSetting.saveFolders(split?.mountedFolderURLs ?? [])
+        // Same window as the folders, so the expansion matches its roots.
+        SessionRestoreSetting.saveExpandedFolders(
+            split?.navigatorExpandedFolderPaths.map { $0.map { URL(fileURLWithPath: $0) } })
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -599,13 +607,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Mounts one or more folders as navigator roots (always `.replace` from
     /// this entry point). Reuses the active window if there is one, otherwise
     /// makes a folder window.
-    func openFolders(_ urls: [URL]) {
+    /// Returns the window controller the folders were mounted in.
+    @discardableResult
+    func openFolders(_ urls: [URL]) -> DocumentWindowController? {
         let directories = urls.map(\.standardizedFileURL)
-        guard !directories.isEmpty else { return }
+        guard !directories.isEmpty else { return nil }
 
         if let controller = activeDocumentWindowController {
             controller.openFolders(directories, mode: .replace)
-            return
+            return controller
         }
 
         let document = MarkdownDocument()
@@ -613,9 +623,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         document.makeWindowControllers()
         document.showWindows()
         guard let controller = document.windowControllers.first as? DocumentWindowController else {
-            return
+            return nil
         }
         controller.openFolders(directories, mode: .replace)
+        return controller
     }
 
     private var isOpenPanelVisible: Bool {

@@ -168,6 +168,19 @@ final class SidebarViewController: NSViewController {
     /// search index (PR #408) can index all of them, not just the first.
     var mountedFolderURLs: [URL] { rootSet.urls }
 
+    /// Expanded navigator folders to save for the next launch; `nil` when
+    /// the navigator was never built (state unknown).
+    var navigatorExpandedFolderPaths: [String]? {
+        guard isViewLoaded else { return nil }
+        return projectNavigator.expandedFolderPaths
+    }
+
+    /// Restores the navigator's expanded folders saved at last quit.
+    func restoreNavigatorExpandedFolders(_ paths: Set<String>) {
+        loadViewIfNeeded()
+        projectNavigator.restoreExpandedFolders(paths)
+    }
+
     private func applyMode() {
         switch currentMode {
         case .outline:
