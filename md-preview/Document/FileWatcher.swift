@@ -3,14 +3,19 @@
 //  md-preview
 //
 //  Watches an open document's file for changes, renames, and deletion.
+//  Kept free of AppKit so the SPM helper tests can verify that watchers
+//  release their file descriptors.
 //
 
-import Cocoa
+import Foundation
 
-final class FileWatcher {
+/// Not main-actor isolated: its `deinit` must be able to cancel the source,
+/// and every handler runs on the `queue` it is given (`.main` in the app).
+nonisolated final class FileWatcher {
     private static let moveResolutionDelay: TimeInterval = 0.20
 
     private let url: URL
+    private let queue: DispatchQueue
     private let onChange: () -> Void
     /// Fired when the watched file is renamed or moved (in Finder, by an
     /// editor, etc.). Detected via `F_GETPATH` on the still-open FD —
@@ -18,25 +23,32 @@ final class FileWatcher {
     /// new path. Plain deletes don't fire this (path unchanged).
     var onRename: ((URL) -> Void)?
     private var source: DispatchSourceFileSystemObject?
+    /// The live source's descriptor, for `F_GETPATH` only; -1 once the
+    /// source is cancelled. Closing is the cancel handler's job.
     private var fileDescriptor: Int32 = -1
     private var debounce: DispatchWorkItem?
     private var moveResolution: DispatchWorkItem?
 
-    init(url: URL, onChange: @escaping () -> Void) {
+    init(url: URL, queue: DispatchQueue = .main, onChange: @escaping () -> Void) {
         self.url = url
+        self.queue = queue
         self.onChange = onChange
         open()
     }
 
+    deinit {
+        cancel()
+    }
+
     private func open() {
+        stopSource()
         let fd = Darwin.open(url.path, O_EVTONLY)
         guard fd >= 0 else { return }
-        fileDescriptor = fd
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: [.write, .extend, .delete, .rename, .revoke],
-            queue: .main
+            queue: queue
         )
         source.setEventHandler { [weak self] in
             guard let self, let source = self.source else { return }
@@ -51,22 +63,29 @@ final class FileWatcher {
             }
             self.scheduleChange()
         }
-        source.setCancelHandler { [weak self] in
-            guard let self else { return }
-            if self.fileDescriptor >= 0 {
-                Darwin.close(self.fileDescriptor)
-                self.fileDescriptor = -1
-            }
-        }
+        // Capture the descriptor by value, never through `self`: the cancel
+        // handler runs asynchronously on `queue`, usually after the owner has
+        // already dropped (and deallocated) this watcher. Routing the close
+        // through a weak `self` skipped it, leaking a descriptor on every
+        // file switch, save, and window close until the process could no
+        // longer open anything — the Project Navigator then went blank.
+        source.setCancelHandler { Darwin.close(fd) }
+        fileDescriptor = fd
         self.source = source
         source.resume()
+    }
+
+    /// Cancels the live source (its cancel handler closes the descriptor).
+    private func stopSource() {
+        source?.cancel()
+        source = nil
+        fileDescriptor = -1
     }
 
     private func resolveMove(afterSettlingAt movedURL: URL?) {
         moveResolution?.cancel()
         debounce?.cancel()
-        source?.cancel()
-        source = nil
+        stopSource()
 
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -87,18 +106,13 @@ final class FileWatcher {
             }
         }
         moveResolution = work
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + Self.moveResolutionDelay,
-            execute: work
-        )
+        queue.asyncAfter(deadline: .now() + Self.moveResolutionDelay, execute: work)
     }
 
     private func reopen() {
-        source?.cancel()
-        source = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.open()
-        }
+        stopSource()
+        let work = DispatchWorkItem { [weak self] in self?.open() }
+        queue.asyncAfter(deadline: .now() + 0.05, execute: work)
     }
 
     private func currentPath() -> URL? {
@@ -114,13 +128,16 @@ final class FileWatcher {
         debounce?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.onChange() }
         debounce = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+        queue.asyncAfter(deadline: .now() + 0.08, execute: work)
     }
 
+    /// Stops watching and releases the file descriptor (asynchronously, on
+    /// the watcher's queue). Safe to call more than once.
     func cancel() {
         debounce?.cancel()
+        debounce = nil
         moveResolution?.cancel()
-        source?.cancel()
-        source = nil
+        moveResolution = nil
+        stopSource()
     }
 }

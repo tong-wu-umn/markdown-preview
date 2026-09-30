@@ -1,6 +1,6 @@
 import Foundation
 
-enum FileWatcherMoveResolution: Equatable {
+nonisolated enum FileWatcherMoveResolution: Equatable {
     case reloadOriginal
     case followRename(URL)
     case unavailable

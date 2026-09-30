@@ -4,11 +4,22 @@
 //
 
 import Cocoa
+import os
+
+extension Logger {
+    nonisolated static let navigator = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "doc.md-preview",
+        category: "navigator")
+}
 
 private final class FileNode {
     let url: URL
     let isDirectory: Bool
     private var loadedChildren: [FileNode]?
+    /// True while the last attempt to read this folder failed. The folder's
+    /// contents are unknown, not empty, so it stays expandable and the
+    /// navigator keeps retrying.
+    private(set) var readFailed = false
 
     init(url: URL, isDirectory: Bool) {
         self.url = url
@@ -29,16 +40,27 @@ private final class FileNode {
             return []
         }
         let showsPlainText = NavigatorPlainTextSetting.isEnabled
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]) else {
+        let entries: [URL]
+        do {
+            entries = try FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles])
+        } catch {
             // A failed read (folder mid-move, transient I/O or descriptor
             // pressure) is not an empty folder: don't cache it, so the next
             // query or refresh reads the directory again instead of pinning
             // the row as a leaf.
+            if !readFailed {
+                let openDescriptors = (try? FileManager.default
+                    .contentsOfDirectory(atPath: "/dev/fd").count) ?? -1
+                Logger.navigator.error(
+                    "Folder read failed (\(openDescriptors) open descriptors): \(self.url.path, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
+            readFailed = true
             return []
         }
+        readFailed = false
         let nodes: [FileNode] = entries.compactMap { entry in
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             if isDir { return FileNode(url: entry, isDirectory: true) }
@@ -88,6 +110,11 @@ final class ProjectNavigatorView: NSView {
     /// The folder whose collapse is in progress (see `outlineViewItemWillCollapse`).
     private var collapseOrigin: FileNode?
     private var collapseIncludesDescendants = false
+    /// Pending re-read after a folder failed to load, and its backoff.
+    private var recoveryWork: DispatchWorkItem?
+    private var recoveryDelay: TimeInterval = 1
+    /// Set when any folder read fails; cleared at the start of each refresh.
+    private var sawReadFailure = false
     /// Shown in `.files` mode when no folder is mounted (D7 / Phase 2).
     private let emptyStateView = NSView()
 
@@ -308,7 +335,7 @@ final class ProjectNavigatorView: NSView {
             return
         }
         outlineView.expandItem(node)
-        for child in node.children() where child.isDirectory {
+        for child in children(of: node) where child.isDirectory {
             applyExpansion(child, paths: paths)
         }
         if !isExpanded {
@@ -375,6 +402,34 @@ final class ProjectNavigatorView: NSView {
         restoreSelection(selectedURL)
     }
 
+    /// Every read of a folder's children goes through here, so a failed
+    /// read schedules a refresh instead of leaving the folder blank until
+    /// something else happens to change on disk.
+    private func children(of node: FileNode) -> [FileNode] {
+        let kids = node.children()
+        if node.readFailed {
+            sawReadFailure = true
+            scheduleRecovery()
+        }
+        return kids
+    }
+
+    /// Re-reads the tree after a failed folder read, backing off from 1s to
+    /// 30s while reads keep failing (e.g. a root that was deleted).
+    private func scheduleRecovery() {
+        guard recoveryWork == nil else { return }
+        let delay = recoveryDelay
+        recoveryDelay = min(recoveryDelay * 2, 30)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.recoveryWork = nil
+            self.handleFolderChange()
+            if !self.sawReadFailure { self.recoveryDelay = 1 }
+        }
+        recoveryWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
     private func restoreSelection(_ url: URL?) {
         if let url, selectVisibleRow(for: url) { return }
         outlineView.deselectAll(nil)
@@ -384,6 +439,7 @@ final class ProjectNavigatorView: NSView {
     /// collapsed roots and folders stay collapsed. Selection is left to the
     /// caller.
     private func refreshTree() {
+        sawReadFailure = false
         let expandedPaths = collectExpandedPaths()
         for node in rootNodes { invalidateCaches(node) }
         outlineView.reloadData()
@@ -489,7 +545,7 @@ final class ProjectNavigatorView: NSView {
         // Skip subtrees that can't contain the target.
         guard targetURL.isDescendantOrSame(of: root.url) else { return false }
 
-        for child in root.children() {
+        for child in children(of: root) {
             if child.url.standardizedFileURL == targetURL {
                 path.append(child)
                 return true
@@ -683,18 +739,21 @@ extension ProjectNavigatorView: NSMenuDelegate {
 extension ProjectNavigatorView: NSOutlineViewDataSource {
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        if let node = item as? FileNode { return node.children().count }
+        if let node = item as? FileNode { return children(of: node).count }
         return rootNodes.count
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if let node = item as? FileNode { return node.children()[index] }
+        if let node = item as? FileNode { return children(of: node)[index] }
         return rootNodes[index]
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         guard let node = item as? FileNode else { return false }
-        return node.isDirectory && !node.children().isEmpty
+        guard node.isDirectory else { return false }
+        // A folder that failed to read keeps its disclosure triangle, so
+        // expanding it retries instead of the row looking like an empty leaf.
+        return !children(of: node).isEmpty || node.readFailed
     }
 
     // MARK: - Directory drops
