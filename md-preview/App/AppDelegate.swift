@@ -633,13 +633,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.windows.contains { $0 is NSOpenPanel && $0.isVisible }
     }
 
+    /// Bundle id the installed launcher should open. The bundled script
+    /// hardcodes the release id (`doc.md-preview`); a Debug build runs as
+    /// `doc.md-preview.dev`, so the installer rewrites the launcher to target
+    /// whichever app actually ran *Install CLI…*. Otherwise `mdp` from a dev
+    /// build fails with `LSCopyApplicationURLsForBundleIdentifier() failed`.
+    private var commandLineToolTargetBundleIdentifier: String {
+        let releaseIdentifier = "doc.md-preview"
+        guard let identifier = Bundle.main.bundleIdentifier,
+              !identifier.isEmpty,
+              identifier.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }) else {
+            return releaseIdentifier
+        }
+        return identifier
+    }
+
     private func makeCommandLineToolInstallerScript(commandLineToolURL: URL) -> String {
         """
         #!/bin/sh
         set -eu
         installer_path=$0
-        trap 'rm -f "$installer_path"' EXIT
+        launcher_tmp=$(mktemp "${TMPDIR:-/tmp}/markdown-preview-cli.XXXXXX")
+        trap 'rm -f "$installer_path" "$launcher_tmp"' EXIT
         bundled_cli=\(commandLineToolURL.path.shellQuotedString)
+        target_bundle_id=\(commandLineToolTargetBundleIdentifier.shellQuotedString)
+
+        # Point the launcher at the app that ran the installer (e.g. the
+        # `.dev` bundle id for a local Debug build) instead of the release id
+        # hardcoded in the bundled script.
+        sed "s/\\"doc\\.md-preview\\"/\\"$target_bundle_id\\"/g" "$bundled_cli" > "$launcher_tmp"
+        grep -q "open -b \\"$target_bundle_id\\"" "$launcher_tmp" || {
+          echo "Could not prepare the Markdown Preview launcher for $target_bundle_id." >&2
+          exit 1
+        }
 
         path_contains() {
           case ":$PATH:" in
@@ -724,7 +750,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
           if grep -q '^# Managed by Markdown Preview CLI$' "$path"; then
             return 0
           fi
-          grep -q 'exec open -b "doc.md-preview"' "$path"
+          grep -q 'exec open -b "doc\\.md-preview[.a-z-]*"' "$path"
         }
 
         can_replace_primary() {
@@ -760,10 +786,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if [ "$needs_sudo" = "true" ]; then
           echo "Installing Markdown Preview command line tools to $install_dir requires your password."
           sudo mkdir -p "$install_dir"
-          sudo install -m 755 "$bundled_cli" "$primary"
+          sudo install -m 755 "$launcher_tmp" "$primary"
         else
           mkdir -p "$install_dir"
-          install -m 755 "$bundled_cli" "$primary"
+          install -m 755 "$launcher_tmp" "$primary"
         fi
 
         for alias in mdp markdown-preview; do

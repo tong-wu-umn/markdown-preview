@@ -169,9 +169,12 @@ ditto "$APP" "/Applications/Markdown Preview (dev).app"
   picks; a DerivedData or dev build can shadow a released one. Reset the
   database with `lsregister -kill -r -domain local -domain user` (the tool is
   under `.../CoreServices/.../LaunchServices.framework/Support/`).
-- The `mdp` / `md-preview` CLI (installed from a released app) runs
-  `open -b "doc.md-preview"`, i.e. it targets the **released** bundle id, not
-  the `.dev` build. Test the local build with `open -a "$APP"` instead.
+- The `mdp` / `md-preview` CLI targets the bundle id of whichever app ran
+  *Install CLI…*: installed from a released app it runs
+  `open -b "doc.md-preview"`; installed from the dev build it runs
+  `open -b "doc.md-preview.dev"`. Because it opens by bundle id, not path, it
+  keeps working across rebuilds and re-copies. Re-run *Install CLI…* from the
+  other app to switch which one `mdp` opens.
 - To keep current with upstream: `git fetch` the upstream remote, merge, then
   rebuild. Watch `Version.xcconfig`, `Info.plist` (`SUFeedURL`, `SUPublicEDKey`),
   and `project.pbxproj` (`DEVELOPMENT_TEAM`) in the merge — those carry the
