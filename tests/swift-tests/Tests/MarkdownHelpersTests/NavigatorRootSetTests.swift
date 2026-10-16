@@ -25,11 +25,18 @@ final class NavigatorRootSetTests: XCTestCase {
         XCTAssertEqual(set.urls.map(\.path), ["/c"])
     }
 
-    func testMountAddAppendsAndPreservesOrder() {
+    func testMountAddKeepsRootsSortedByName() {
         var set = NavigatorRootSet()
-        set.mount([url("/a")], mode: .replace)
-        XCTAssertTrue(set.mount([url("/b"), url("/c")], mode: .add))
-        XCTAssertEqual(set.urls.map(\.path), ["/a", "/b", "/c"])
+        set.mount([url("/x/b")], mode: .replace)
+        XCTAssertTrue(set.mount([url("/y/C"), url("/z/a")], mode: .add))
+        XCTAssertEqual(set.urls.map(\.path), ["/z/a", "/x/b", "/y/C"])
+    }
+
+    func testMountReplaceSortsByNameNaturallyWithPathTieBreak() {
+        var set = NavigatorRootSet()
+        set.mount([url("/q/docs"), url("/p/item10"), url("/p/docs"), url("/p/item2")],
+                  mode: .replace)
+        XCTAssertEqual(set.urls.map(\.path), ["/p/docs", "/q/docs", "/p/item2", "/p/item10"])
     }
 
     func testMountDuplicatePathIsANoOp() {
@@ -58,7 +65,7 @@ final class NavigatorRootSetTests: XCTestCase {
         var set = NavigatorRootSet()
         set.mount([url("/proj")], mode: .replace)
         XCTAssertTrue(set.mount([url("/proj/docs")], mode: .add))
-        XCTAssertEqual(set.urls.map(\.path), ["/proj", "/proj/docs"])
+        XCTAssertEqual(set.urls.map(\.path), ["/proj/docs", "/proj"])
     }
 
     // MARK: - remove
@@ -124,8 +131,8 @@ final class NavigatorRootSetTests: XCTestCase {
     func testContainingRootPicksTheFirstContainingRootInOrder() {
         var set = NavigatorRootSet()
         set.mount([url("/proj"), url("/proj/docs")], mode: .replace)
-        // Both roots contain the file; the first in order wins.
-        XCTAssertEqual(set.containingRoot(for: url("/proj/docs/guide.md"))?.url.path, "/proj")
+        // Both roots contain the file; the first in display (name) order wins.
+        XCTAssertEqual(set.containingRoot(for: url("/proj/docs/guide.md"))?.url.path, "/proj/docs")
         XCTAssertEqual(set.containingRoot(for: url("/proj/readme.md"))?.url.path, "/proj")
         XCTAssertNil(set.containingRoot(for: url("/elsewhere/x.md")))
     }

@@ -29,7 +29,7 @@ enum FolderMountMode {
     /// the backward-compatible folder-open entry points (⌘O, Finder, `mdp`,
     /// the URL scheme).
     case replace
-    /// Append the incoming folders, keeping the current roots. Used by
+    /// Add the incoming folders, keeping the current roots. Used by
     /// "Add Folder to Navigator…".
     case add
 }
@@ -37,7 +37,8 @@ enum FolderMountMode {
 struct NavigatorRootSet: Equatable {
     private(set) var roots: [NavigatorRoot] = []
 
-    /// Mounted roots in display order.
+    /// Mounted roots in display order: sorted by folder name (Finder-style
+    /// `localizedStandardCompare`, full path as tie-break).
     var urls: [URL] { roots.map(\.url) }
 
     /// Whether the user has deliberately mounted at least one folder.
@@ -58,6 +59,7 @@ struct NavigatorRootSet: Equatable {
             for url in incoming where seen.insert(url.path).inserted {
                 newRoots.append(NavigatorRoot(url: url, isExplicit: true))
             }
+            newRoots.sort(by: Self.displayOrder)
             guard newRoots != roots else { return false }
             roots = newRoots
             return true
@@ -68,7 +70,18 @@ struct NavigatorRootSet: Equatable {
                 roots.append(NavigatorRoot(url: url, isExplicit: true))
                 changed = true
             }
+            if changed { roots.sort(by: Self.displayOrder) }
             return changed
+        }
+    }
+
+    /// Orders roots by folder name, then by full path so same-named folders
+    /// stay in a stable order.
+    private static func displayOrder(_ lhs: NavigatorRoot, _ rhs: NavigatorRoot) -> Bool {
+        switch lhs.url.lastPathComponent.localizedStandardCompare(rhs.url.lastPathComponent) {
+        case .orderedAscending: return true
+        case .orderedDescending: return false
+        case .orderedSame: return lhs.url.path.localizedStandardCompare(rhs.url.path) == .orderedAscending
         }
     }
 
