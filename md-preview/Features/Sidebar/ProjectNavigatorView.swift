@@ -102,6 +102,7 @@ final class ProjectNavigatorView: NSView {
     // One watcher per loaded directory; kept in sync with which FileNodes
     // currently have a populated children cache.
     private var watchers: [URL: DirectoryWatcher] = [:]
+    private var isWatcherSyncScheduled = false
     /// Expanded-folder paths restored from the last session, waiting for
     /// the tree to be built (the navigator loads lazily in `.files` mode).
     private var pendingExpandedPaths: Set<String>?
@@ -376,10 +377,14 @@ final class ProjectNavigatorView: NSView {
         }
     }
 
+    /// Folders whose listing is loaded, the only ones a watcher can keep
+    /// current. Watching every folder that merely appears in a loaded listing
+    /// also watched each visible folder's unloaded subfolders. For a large
+    /// mounted tree that used up the descriptor limit, and the app then could
+    /// not read the document the user clicked.
     private func collectLoadedDirectories(_ node: FileNode, into set: inout Set<URL>) {
-        guard node.isDirectory else { return }
+        guard node.isDirectory, let kids = node.cachedChildren else { return }
         set.insert(node.url.standardizedFileURL)
-        guard let kids = node.cachedChildren else { return }
         for child in kids where child.isDirectory {
             collectLoadedDirectories(child, into: &set)
         }
@@ -406,12 +411,29 @@ final class ProjectNavigatorView: NSView {
     /// read schedules a refresh instead of leaving the folder blank until
     /// something else happens to change on disk.
     private func children(of node: FileNode) -> [FileNode] {
+        let wasLoaded = node.cachedChildren != nil
         let kids = node.children()
+        if !wasLoaded, node.cachedChildren != nil {
+            // Outline layout loads listings outside any refresh (e.g. the
+            // expandability check for a newly revealed row); watch them too.
+            scheduleWatcherSync()
+        }
         if node.readFailed {
             sawReadFailure = true
             scheduleRecovery()
         }
         return kids
+    }
+
+    /// Coalesces watcher syncs requested while the outline is loading rows.
+    private func scheduleWatcherSync() {
+        guard !isWatcherSyncScheduled else { return }
+        isWatcherSyncScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isWatcherSyncScheduled = false
+            self.syncWatchers()
+        }
     }
 
     /// Re-reads the tree after a failed folder read, backing off from 1s to

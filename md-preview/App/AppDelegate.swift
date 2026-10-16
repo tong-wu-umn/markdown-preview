@@ -104,6 +104,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pendingTerminationSaveCount = 0
     private var terminationSaveFailed = false
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Before session restore mounts any folder: a LaunchServices launch
+        // starts with only 256 descriptors (see FileDescriptorLimit).
+        FileDescriptorLimit.raiseSoftLimit()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         CrashReporter.start()
         let appearanceMode = AppearanceMode.migrateLegacyValue()

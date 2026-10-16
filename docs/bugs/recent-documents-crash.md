@@ -1,7 +1,8 @@
 # Bug: preview stays blank after clicking a file in the navigator (crash in Open Recent)
 
-Status: **open, not fixed**. Investigated 2026-10-16 on macOS 26.7.1 (25G241),
-build at commit `d014e30` (installed as `/Applications/Markdown Preview (dev).app`).
+Status: **fixed** 2026-10-16 (see "Fix" below). Investigated 2026-10-16 on
+macOS 26.7.1 (25G241), build at commit `d014e30` (installed as
+`/Applications/Markdown Preview (dev).app`).
 
 ## Symptom
 
@@ -87,35 +88,96 @@ made them draw. So it is a missing redraw, not a failed folder read: no
 come from restoring the window frame (`NSWindow Frame MainWindow` holds a
 macOS tiling state) during session restore.
 
-## Still unknown
+## Underlying cause: running out of file descriptors
 
-- Why only Markdown Preview, and seemingly only when launched by LaunchServices.
-  Candidates: the inherited environment, something the app loads at launch
-  (Sentry `CrashReporter.start()`, Sparkle, the Debug `__preview.dylib` /
-  `.debug.dylib` split), or timing alongside session restore.
-- Whether a signed Release build is affected too.
+This explains why only Markdown Preview was affected, and only when
+LaunchServices launched it.
 
-## Proposed fix (not implemented)
+After the Open Recent fix, mounting `~/Downloads/projects` and clicking a file
+showed "The operation couldn\U2019t be completed. (NSCocoaErrorDomain error
+256.)". The literal `\U2019` means Foundation could not load its own
+localized strings. At that point the process held **250 directory
+descriptors**.
 
-Keep AppKit's background Open Recent update from reaching the crashing
-LaunchServices call. Do this in
-`md-preview/App/MarkdownDocumentController.swift` (already a
-`NSDocumentController` subclass):
+- **The 256 limit.** An app launched by LaunchServices starts with a soft
+  limit of **256** open files (`launchctl limit maxfiles`). A shell launch
+  inherits the shell's limit, here about 1 million. That is why the
+  shell-launched runs never failed.
+- **Where the descriptors went.** The Project Navigator opens one
+  `DirectoryWatcher` (one `O_EVTONLY` descriptor) per watched folder. It
+  watched every folder that appeared in any loaded listing, not only folders
+  whose own listing was loaded. Checking whether a row can expand loads that
+  folder's listing, so every visible folder and each of its subfolders got a
+  watcher. In the leaked set, 67 were top-level folders of `projects` and 171
+  were their unopened subfolders. A second window on the same tree doubles
+  the count.
+- **What fails at the limit.** Once the process is out of descriptors,
+  opening the clicked document fails with error 256. LaunchServices'
+  recent-documents code is very likely the same failure: it fails to open its
+  list and then dereferences null. This explains why the crash needed a
+  restored large tree.
 
-- **Preferred:** override `noteNewRecentDocumentURL(_:)` and the Open Recent
-  menu so the app keeps its own recent-files list (e.g. in `UserDefaults`),
-  never calling `super`. Open Recent keeps working, and the crash on quit should
-  go away too.
-- **Minimal:** override `noteNewRecentDocumentURL(_:)` as a no-op. This stops
-  the crash, but Open Recent stops updating.
+The crash-to-limit link was not reproduced directly. An old build at
+soft limit 256, pushed to exactly 256 descriptors, did not crash on click
+before testing was stopped.
 
-After either change, reproduce with the steps above. Expect no new `.ips` and
-the preview rendering, for both the navigator click and quit.
+Two changes address this:
 
-## Workaround until fixed
+- `md-preview/Helpers/FileDescriptorLimit.swift` raises the soft limit to
+  10,240 (`OPEN_MAX`, capped by the hard limit). `AppDelegate` calls it in
+  `applicationWillFinishLaunching`, before session restore mounts folders.
+- `ProjectNavigatorView.collectLoadedDirectories` now watches only folders
+  whose listing is loaded. When layout loads a listing outside a refresh, a
+  watcher sync is scheduled for it. With the same expanded folders, the count
+  fell from 256 to 188.
 
-Open files with `open -a "Markdown Preview (dev)" file.md` or `mdp file.md`.
-Avoid clicking them in the navigator of a restored window.
+Verified with a LaunchServices launch: two windows on `~/Downloads/projects`
+with most folders expanded, pushed to **350 open descriptors**. Opening
+`README.md` rendered it (108 accessibility elements in the preview). Quit
+exited cleanly, and no `.ips` was written.
+
+Still open: whether a signed Release build behaves the same. It should,
+because the limit comes from LaunchServices, not from signing.
+
+## Fix: Open Recent
+
+The preferred option from the investigation: the app keeps its own recent-files
+list and never hands a recent document to AppKit or LaunchServices. With the
+descriptor fix in place this is defense in depth rather than the cure.
+
+- `md-preview/Preferences/RecentDocumentsList.swift` stores the list as plain
+  paths in `UserDefaults` (`MarkdownPreview.recentDocumentPaths`): most recent
+  first, no duplicates, at most 10. Missing files are hidden but kept. It uses
+  paths rather than bookmarks for the same reason `SessionRestoreSetting` does:
+  the app already has read-only access to the whole filesystem.
+- `MarkdownDocumentController` overrides `noteNewRecentDocumentURL(_:)`,
+  `recentDocumentURLs`, `maximumRecentDocumentCount` and
+  `clearRecentDocuments(_:)`, and none of them call `super`. The four call sites
+  in the table above, and AppKit's own `noteNewRecentDocument(_:)`, all go
+  through `noteNewRecentDocumentURL(_:)`.
+- In `MainMenu.xib`, *Open Recent* is a plain menu, no longer
+  `systemMenu="recentDocuments"`. Its delegate is the document controller, which
+  rebuilds the menu each time it opens. *Clear Menu* sends
+  `clearRecentDocumentList:` instead of `clearRecentDocuments:`, so AppKit does
+  not take the menu over and run its own menu controller. That controller calls
+  `_LSGetRecentItemCount`, the function that crashed.
+
+Trade-offs: the old system list is not migrated, so Open Recent starts empty.
+Recent files no longer appear in the Dock icon's menu.
+
+Verified with the reproduction steps above, using a LaunchServices launch
+(`open`) of the rebuilt dev app:
+
+- Clicking `AGENTS.md` in the restored navigator rendered the preview, and the
+  process stayed alive.
+- *Open Recent* listed the files that had been opened, and choosing one opened
+  it.
+- Quitting through AppleScript exited cleanly.
+- No new `.ips` was written.
+- `doc.md-preview.dev.sfl4` (LaunchServices' recents file) was not modified.
+
+The first render after launch can take 5–10 s. Wait that long before deciding
+the preview is blank.
 
 ## Machine state left by the investigation
 
