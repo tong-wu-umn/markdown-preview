@@ -990,6 +990,22 @@ nonisolated struct EscapingHTMLFormatter: MarkupWalker {
     private let detectsBareURLs: Bool
 
     private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    /// GFM tagfilter: tags whose raw-text / RCDATA parsing would swallow the
+    /// rest of the document. A stray `<title>` in prose (e.g. `*<title>*`)
+    /// otherwise turns every following line into the element's text, and the
+    /// sanitizer then drops it, so the preview silently ends there. GitHub
+    /// renders these tags literally; so do we.
+    private static let tagFilterRegex = try? NSRegularExpression(
+        pattern: "<(?=/?(?:title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext)(?:[\\s/>]|$))",
+        options: [.caseInsensitive]
+    )
+
+    static func applyingTagFilter(_ html: String) -> String {
+        guard let regex = tagFilterRegex else { return html }
+        let range = NSRange(html.startIndex..., in: html)
+        return regex.stringByReplacingMatches(in: html, range: range, withTemplate: "&lt;")
+    }
     private var markdownLinkDepth = 0
     private var rawHTMLLinkExclusions: [String] = []
     private var inTableHead = false
@@ -1288,8 +1304,9 @@ nonisolated struct EscapingHTMLFormatter: MarkupWalker {
     }
 
     mutating func visitHTMLBlock(_ html: HTMLBlock) {
-        // Raw HTML blocks are passed through per CommonMark.
-        result += html.rawHTML
+        // Raw HTML blocks are passed through per CommonMark, minus the GFM
+        // tagfilter set.
+        result += Self.applyingTagFilter(html.rawHTML)
     }
 
     mutating func visitListItem(_ listItem: ListItem) {
@@ -1602,7 +1619,7 @@ nonisolated struct EscapingHTMLFormatter: MarkupWalker {
         // Inline HTML arrives as separate opening/closing nodes. Keep raw
         // anchors and code literal even when their contents are Markdown Text.
         guard detectsBareURLs else {
-            result += inlineHTML.rawHTML
+            result += Self.applyingTagFilter(inlineHTML.rawHTML)
             return
         }
         let tag = inlineHTML.rawHTML.lowercased()
@@ -1614,7 +1631,7 @@ nonisolated struct EscapingHTMLFormatter: MarkupWalker {
                 rawHTMLLinkExclusions.removeSubrange(index...)
             }
         }
-        result += inlineHTML.rawHTML
+        result += Self.applyingTagFilter(inlineHTML.rawHTML)
     }
 
     mutating func visitLineBreak(_ lineBreak: LineBreak) {

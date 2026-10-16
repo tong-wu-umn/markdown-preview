@@ -299,6 +299,22 @@ final class EscapingHTMLFormatterTests: XCTestCase {
         )
     }
 
+    func testTagFilterEscapesRawTextTagsSoTheRestOfTheDocumentSurvives() {
+        // A stray `<title>` in prose used to be passed through raw; the HTML
+        // parser then treated everything after it as title text and the
+        // preview ended there. GFM's tagfilter renders it literally.
+        let html = EscapingHTMLFormatter.format("closes follow-up *<title>*\n\nLater paragraph.")
+        XCTAssertTrue(html.contains("<em>&lt;title></em>"), html)
+        XCTAssertFalse(html.contains("<title>"), html)
+        XCTAssertTrue(html.contains("Later paragraph."), html)
+
+        let block = EscapingHTMLFormatter.format("<TEXTAREA>\nx\n</textarea>\n\n<div>kept</div>")
+        XCTAssertTrue(block.contains("&lt;TEXTAREA>"), block)
+        XCTAssertTrue(block.contains("&lt;/textarea>"), block)
+        XCTAssertTrue(block.contains("<div>kept</div>"), block)
+        XCTAssertTrue(EscapingHTMLFormatter.applyingTagFilter("<titles> <b>").contains("<titles> <b>"))
+    }
+
     func testObsidianHighlightSyntaxRendersAsMark() {
         let html = EscapingHTMLFormatter.format("before ==Highlighted text== after")
         XCTAssertTrue(
